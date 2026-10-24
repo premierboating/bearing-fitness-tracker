@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bearing</string>
+    <string name="title_activity_main">Bearing</string>
+    <string name="package_name">com.bengruver.bearing</string>
+    <string name="custom_url_scheme">com.bengruver.bearing</string>
+</resources>

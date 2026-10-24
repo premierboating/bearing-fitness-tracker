@@ -1,0 +1,14 @@
+{
+  "appId": "com.bengruver.bearing",
+  "appName": "Bearing",
+  "webDir": "www",
+  "backgroundColor": "#11130F",
+  "ios": { "contentInset": "never", "backgroundColor": "#11130F", "preferredContentMode": "mobile" },
+  "android": { "backgroundColor": "#11130F", "allowMixedContent": false },
+  "plugins": {
+    "SplashScreen": { "launchAutoHide": false, "backgroundColor": "#11130F", "showSpinner": false, "androidScaleType": "CENTER_CROP", "splashFullScreen": true, "splashImmersive": false },
+    "LocalNotifications": { "presentationOptions": [], "iconColor": "#8FA271" },
+    "StatusBar": { "style": "DARK", "backgroundColor": "#11130F", "overlaysWebView": true },
+    "Keyboard": { "resize": "native", "resizeOnFullScreen": true }
+  }
+}
