@@ -509,7 +509,7 @@
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const KEY = 'setlist.v1';
-const APP_VERSION = '5.0', FEEDBACK_TO = 'ben@premierboating.com';
+const APP_VERSION = '5.1', FEEDBACK_TO = 'ben@premierboating.com';
 /* The web address of the app: the native app posts feedback there and links to it. */
 const SITE_URL = window.BEARING_SITE_URL || 'https://bearing-beta.netlify.app';
 /* Account service (Supabase project): the anon key is public by design; rows are protected per user on the server. */
@@ -2371,6 +2371,7 @@ function toast(msg){ const old = $('.toast'); if (old) old.remove(); const t = d
 /* ---------- render ---------- */
 function render(){
   const view = state.ui.view;
+  if (gateOn()) { bannerEl.innerHTML = ''; screenEl.className = 'screen onboard'; tabsEl.hidden = true; screenEl.innerHTML = renderGate(); renderRest(); save(); return; }
   bannerEl.innerHTML = state.sample ? '<div class="banner"><span>Sample workouts loaded so you can look around.</span><button data-act="fresh-ask">Start fresh</button></div>' : '';
   if (!state.settings.setupDone && !ob) ob = {i: 0};
   if (ob) { bannerEl.innerHTML = ''; screenEl.className = 'screen onboard'; tabsEl.hidden = true; screenEl.innerHTML = renderOnboard(); renderRest(); save(); return; }
@@ -2398,9 +2399,9 @@ function renderOnboard(){
   if (key === 'track') {
     body = '<div class="obq"><div class="obbrand" aria-label="Bearing">' + BRAND.wordmark + '</div>' + stepLine + '<h1 class="obh">What do you track?</h1><p class="muted">You can change this any time under You.</p></div><div class="obtiles">' +
       tile('ob-track', 'both', 'Lifting and cardio', 'The full app, one coach for both') + tile('ob-track', 'lift', 'Lifting only', 'Cardio stays out of the way') + tile('ob-track', 'cardio', 'Cardio only', 'Runs, walks, machines, classes') + '</div>' +
-      '<div class="obfoot">' + (syncReady() ? '<button class="btn secondary" style="margin-bottom:10px" data-act="acct-open">Already have an account? Sign in</button>' : '') + '<button class="btn link small" data-act="ob-sample">Just looking? Load sample workouts</button></div>';
+      '<div class="obfoot"><button class="btn link small" data-act="ob-sample">Just looking? Load sample workouts</button></div>';
   } else if (key === 'sex') {
-    body = '<div class="obq">' + stepLine + '<h1 class="obh">Sex</h1><p class="muted">Used for strength standards, the athlete score and macros. Nothing leaves this phone.</p></div><div class="obtiles">' +
+    body = '<div class="obq">' + stepLine + '<h1 class="obh">Sex</h1><p class="muted">Used for strength standards, the athlete score and macros. ' + (syncReady() ? 'Saved to your account, nowhere else.' : 'Nothing leaves this phone.') + '</p></div><div class="obtiles">' +
       tile('ob-sex', 'm', 'Male', '', p.sex === 'm') + tile('ob-sex', 'f', 'Female', '', p.sex === 'f') + tile('ob-sex', '', 'Prefer not to say', 'Standards and macros stay off until you set it') + '</div>';
   } else if (key === 'body') {
     const ages = Array.from({length: 75}, (_, i) => i + 16).map(a => '<option value="' + a + '"' + (a === p.age ? ' selected' : '') + '>' + a + '</option>').join('');
@@ -2444,7 +2445,7 @@ function renderOnboard(){
     const rows = ios ? [['Tap Share', 'The ' + share + ' button at the bottom of Safari'], ['Add to Home Screen', 'Scroll the list and tap it, then tap Add'], ['Open it from your home screen', 'Full screen, works without signal, keeps your history']]
       : android ? [['Open the browser menu', 'The ⋮ at the top right of Chrome'], [installPrompt ? 'Tap Install below' : 'Add to Home screen', installPrompt ? 'Or use the menu item Install app' : 'Also called Install app on some phones'], ['Open it from your home screen', 'Full screen, works without signal, keeps your history']]
       : [['Open the browser menu', 'Look for Add to Home Screen or Install'], ['Add it', 'Confirm the name Bearing'], ['Open it from your home screen', 'Full screen, works without signal']];
-    body = '<div class="obq">' + stepLine + '<h1 class="obh">Put it on your phone</h1><p class="muted">Bearing runs as an app once it is on your home screen. Your log stays on this phone either way.</p></div><div class="obtiles obhow">' +
+    body = '<div class="obq">' + stepLine + '<h1 class="obh">Put it on your phone</h1><p class="muted">Bearing runs as an app once it is on your home screen. ' + (syncReady() ? 'Your log is in your account either way.' : 'Your log stays on this phone either way.') + '</p></div><div class="obtiles obhow">' +
       rows.map((r, k) => '<div class="obtile"><span class="t">' + (k + 1) + '. ' + r[0] + '</span><span class="s">' + r[1] + '</span></div>').join('') + '</div>' +
       '<div class="obfoot">' + (installPrompt ? '<button class="btn primary" data-act="ob-install">Install Bearing</button><button class="btn link small" data-act="ob-start" style="margin-top:12px">Skip for now</button>' : '<button class="btn primary" data-act="ob-start">Got it, start</button>') + '</div>';
   }
@@ -3507,8 +3508,10 @@ function renderModal(){
       '<button class="btn primary" style="margin-top:14px" data-act="rec-log">Log ' + k[1].toLowerCase() + '</button>';
   } else if (sheet.type === 'account') {
     inner = '<div class="between"><div class="h2">Sign in</div><button class="btn sm ghost" data-act="close">Close</button></div><p class="small muted" style="margin:8px 0 12px">Your log comes back from your account, and this phone keeps saving to it.</p>' + accountForm(true);
+  } else if (sheet.type === 'signout') {
+    inner = '<div class="h2">Sign out?</div><p style="margin:8px 0 14px">Your log stays in your account and is removed from this phone. Sign in again any time to get it back.</p><div class="row"><button class="btn grow" data-act="close">Stay signed in</button><button class="btn grow ghost" data-act="sign-out-go">Sign out</button></div><div class="small" id="syncline" style="margin-top:8px">' + syncLine() + '</div>';
   } else if (sheet.type === 'acct-delete') {
-    inner = '<div class="h2">Delete your account?</div><p style="margin:8px 0 14px">This removes your account and the copy of your log stored in it. The log on this phone stays until you clear it. There is no undo.</p><div class="row"><button class="btn grow" data-act="close">Keep it</button><button class="btn grow danger" data-act="acct-delete">Delete account</button></div><div class="small" id="syncline" style="margin-top:8px">' + syncLine() + '</div>';
+    inner = '<div class="h2">Delete your account?</div><p style="margin:8px 0 14px">This removes your account, the copy of your log stored in it, and the copy on this phone. There is no undo. To keep the log, copy a backup first under You.</p><div class="row"><button class="btn grow" data-act="close">Keep it</button><button class="btn grow danger" data-act="acct-delete">Delete account</button></div><div class="small" id="syncline" style="margin-top:8px">' + syncLine() + '</div>';
   } else if (sheet.type === 'newpw') {
     inner = '<div class="between"><div class="h2">New password</div><button class="btn sm ghost" data-act="close">Close</button></div><p class="small muted" style="margin:8px 0 12px">Set a new password for ' + esc(auth && auth.email ? auth.email : 'your account') + '.</p><input class="input" id="acct-pw" type="password" autocomplete="new-password" placeholder="New password, 8 or more characters" style="margin-bottom:10px"><button class="btn primary" data-act="newpw-save">Save password</button><div class="small" id="syncline" style="margin-top:8px">' + syncLine() + '</div>';
   } else if (sheet.type === 'easy') {
@@ -3943,11 +3946,12 @@ app.addEventListener('click', e => {
     case 'sign-in': doAuth('in'); break;
     case 'sign-up': doAuth('up'); break;
     case 'forgot-pw': doAuth('forgot'); break;
-    case 'sign-out': signOut(); break;
+    case 'sign-out': sheet = {type: 'signout'}; renderModal(); break;
+    case 'sign-out-go': signOut(); break;
     case 'acct-delete-ask': sheet = {type: 'acct-delete'}; renderModal(); break;
-    case 'acct-delete': { syncUi.busy = true; patchSyncLine(); authFetch('/rest/v1/rpc/delete_user', {method: 'POST', body: '{}'}).then(res => { syncUi.busy = false; if (!res.ok) throw new Error('Could not delete the account just now'); setAuth(null); state.sync = {rev: 0}; syncUi.last = 0; syncUi.error = ''; saveLocal(); closeSheet(); render(); toast('Account deleted. Your log is still on this phone.'); }).catch(e => { syncUi.busy = false; syncUi.error = e.message; patchSyncLine(); }); break; }
+    case 'acct-delete': { syncUi.busy = true; patchSyncLine(); authFetch('/rest/v1/rpc/delete_user', {method: 'POST', body: '{}'}).then(res => { syncUi.busy = false; if (!res.ok) throw new Error('Could not delete the account just now'); setAuth(null); clearPhone(); closeSheet(); render(); toast('Account deleted.'); }).catch(e => { syncUi.busy = false; syncUi.error = e.message; patchSyncLine(); }); break; }
     case 'sync-now': { syncPull({force: true, toast: true}).then(ok => { if (ok) syncPush(); }); break; }
-    case 'newpw-save': { const p = $('#acct-pw'), pw = p ? p.value : ''; if (pw.length < 8) { syncUi.error = 'The password needs 8 or more characters.'; patchSyncLine(); break; } setPassword(pw).then(() => { syncUi.error = ''; closeSheet(); toast('Password saved'); syncPull({force: true}); }).catch(e => { syncUi.error = e.message; patchSyncLine(); }); break; }
+    case 'newpw-save': { const p = $('#acct-pw'), pw = p ? p.value : ''; if (pw.length < 8) { syncUi.error = 'The password needs 8 or more characters.'; patchSyncLine(); break; } setPassword(pw).then(() => authFetch('/auth/v1/user')).then(r => r.ok ? r.json() : null).then(u => { if (u && u.id) { auth.uid = u.id; auth.email = u.email || auth.email; setAuth(auth); } syncUi.error = ''; closeSheet(); toast('Password saved'); render(); syncPull({force: true}); }).catch(e => { syncUi.error = e.message; patchSyncLine(); }); break; }
     case 'easy-open': sheet = {type: 'easy', rid: t.dataset.rid || ''}; renderModal(); break;
     case 'easy-day': { const rid = t.dataset.rid; closeSheet(); if (rid && routine(rid)) startWorkout(rid, true); else { sheet = {type: 'pick-routine', light: true}; renderModal(); } break; }
     case 'easy-week': state.settings.lightUntil = keyOf(addDays(new Date(), 6)); closeSheet(); save(); render(); toast('Light week on through ' + fmtShort(state.settings.lightUntil)); break;
@@ -4307,7 +4311,25 @@ async function signUp(email, pw){ const j = await authCall('/auth/v1/signup', {e
 async function signIn(email, pw){ const j = await authCall('/auth/v1/token?grant_type=password', {email: email, password: pw}); const s = sessionFrom(j); if (!s) throw new Error('Sign in failed'); setAuth(s); }
 async function forgotPassword(email){ await authCall('/auth/v1/recover', {email: email}); }
 async function setPassword(pw){ const res = await authFetch('/auth/v1/user', {method: 'PUT', body: JSON.stringify({password: pw})}); if (!res.ok) throw new Error('Could not set the new password. Ask for a fresh reset link.'); }
-function signOut(){ if (auth && auth.access) authFetch('/auth/v1/logout', {method: 'POST'}).catch(() => {}); setAuth(null); state.sync = {rev: 0}; syncUi.last = 0; syncUi.error = ''; saveLocal(); render(); toast('Signed out. Your log stays on this phone.'); }
+async function signOut(){
+  if (!syncReady()) { setAuth(null); render(); return; }
+  syncUi.busy = true; syncUi.error = ''; patchSyncLine();
+  const ok = await syncPush();
+  if (!ok) { syncUi.busy = false; syncUi.error = navigator.onLine === false ? 'You are offline. Connect to sync your latest changes, then sign out.' : 'Could not sync your latest changes. Try again in a moment.'; patchSyncLine(); return; }
+  if (auth && auth.access) authFetch('/auth/v1/logout', {method: 'POST'}).catch(() => {});
+  setAuth(null); clearPhone(); closeSheet(); render(); toast('Signed out');
+}
+/* Back to a blank phone: the account keeps the log. */
+function clearPhone(){ state = fresh(false); state.ui.view = 'today'; ob = null; syncUi.last = 0; syncUi.error = ''; syncUi.busy = false; lastPushedSig = ''; saveLocal(); }
+/* With accounts switched on, the app opens on the sign-in screen until there is a session. */
+let gateHold = false;
+const gateOn = () => syncReady() && (!signedIn() || gateHold);
+function renderGate(){
+  const brand = '<div class="obbrand" aria-label="Bearing">' + BRAND.wordmark + '</div>';
+  if (gateHold) return '<div class="obq">' + brand + '<h1 class="obh">Loading your log…</h1><p class="muted">One moment.</p></div><div class="small" id="syncline">' + syncLine() + '</div>';
+  const has = !state.sample && (state.workouts.length || state.routines.length || state.settings.setupDone);
+  return '<div class="obq">' + brand + '<h1 class="obh">Your log, on every phone</h1><p class="muted">Bearing keeps your workouts in a free account, so a new phone or a reinstall gets everything back.' + (has ? ' The log already on this phone comes along.' : '') + '</p></div><div class="card">' + accountForm(true) + '</div><div class="obfoot"><p class="tiny muted" style="margin:0">Your email and your log are all that is stored. The account can be deleted at any time under You.</p></div>';
+}
 
 /* The document that travels: everything but screen state, the live workout, the rest timer and the sync bookkeeping. */
 function syncDoc(){ const s = Object.assign({}, state, {active: null, timer: null}); delete s.ui; delete s.sync; return s; }
@@ -4317,6 +4339,7 @@ let pushT = null, pushing = false, pushAgain = false, lastPushedSig = '';
 function schedulePush(){ if (!signedIn() || !syncReady()) return; clearTimeout(pushT); pushT = setTimeout(syncPush, 2500); }
 async function syncPush(){
   if (!signedIn() || !syncReady() || navigator.onLine === false) return false; if (pushing) { pushAgain = true; return false; }
+  if (state.sample) return true;
   const str = JSON.stringify(syncDoc()), sig = sigOf(str); if (sig === lastPushedSig) return true;
   pushing = true; syncUi.busy = true; syncUi.error = ''; patchSyncLine();
   let ok = false;
@@ -4338,14 +4361,14 @@ async function syncPull(opts){
     const res = await authFetch('/rest/v1/bearing_state?select=doc,rev&user_id=eq.' + encodeURIComponent(auth.uid), {headers: {Accept: 'application/json'}});
     if (!res.ok) throw new Error('pull ' + res.status);
     const rows = await res.json(), row = Array.isArray(rows) ? rows[0] : null;
-    if (!row || !row.doc) { if (state.workouts.length || state.routines.length || state.settings.setupDone) schedulePush(); ok = true; }
+    if (!row || !row.doc) { if (!state.sample && (state.workouts.length || state.routines.length || state.settings.setupDone)) schedulePush(); ok = true; }
     else {
       const remoteRev = row.rev || 0;
       if (remoteRev > ((state.sync && state.sync.rev) || 0) || opts.force) {
         const remote = normalizeState(typeof row.doc === 'string' ? JSON.parse(row.doc) : row.doc);
         if (!remote) throw new Error('bad doc');
         const remoteSig = sigOf(JSON.stringify(Object.assign({}, remote, {ui: undefined, sync: undefined, active: null, timer: null})));
-        const merged = mergeStates(state, remote), keepUi = state.ui, keepActive = state.active, keepTimer = state.timer;
+        const merged = mergeStates(state.sample ? fresh(false) : state, remote), keepUi = state.ui, keepActive = state.active, keepTimer = state.timer;
         state = merged; state.ui = keepUi; state.active = keepActive; state.timer = keepTimer; state.sync = {rev: remoteRev}; state.sample = false;
         if (state.settings.setupDone) ob = null;
         assignPRs(state.workouts); saveLocal(); syncUi.last = Date.now(); lastPushedSig = remoteSig; render(); renderModal();
@@ -4398,9 +4421,11 @@ async function doAuth(kind){
   try {
     if (kind === 'forgot') { await forgotPassword(a.email); syncUi.busy = false; toast('Check your email for a reset link'); patchSyncLine(); if (btn) btn.textContent = 'Forgot password?'; return; }
     if (kind === 'up') await signUp(a.email, a.pw); else await signIn(a.email, a.pw);
-    syncUi.busy = false; sheet = null; renderModal(); render(); toast(kind === 'up' ? 'Account created' : 'Signed in');
-    await syncPull({force: true, toast: true}); render();
-  } catch (e) { syncUi.busy = false; syncUi.error = e.message || 'Something went wrong'; patchSyncLine(); if (btn) btn.textContent = kind === 'forgot' ? 'Forgot password?' : kind === 'up' ? 'Create account' : 'Sign in'; }
+    if (state.sample) { const keepUi = state.ui; state = fresh(false); state.ui = keepUi; state.ui.view = 'today'; saveLocal(); }
+    gateHold = true; syncUi.busy = false; sheet = null; renderModal(); render();
+    await syncPull({force: true});
+    gateHold = false; ob = null; state.ui.view = 'today'; render(); toast(kind === 'up' ? 'Account created' : 'Signed in');
+  } catch (e) { gateHold = false; syncUi.busy = false; syncUi.error = /fetch|load failed|network/i.test(e.message || '') ? 'Could not reach the server. Check your connection and try again.' : (e.message || 'Something went wrong'); patchSyncLine(); if (btn) btn.textContent = kind === 'forgot' ? 'Forgot password?' : kind === 'up' ? 'Create account' : 'Sign in'; }
 }
 /* A password-reset link lands here with a session in the URL: keep it and ask for the new password. */
 function recoveryFromUrl(){
@@ -4414,6 +4439,7 @@ state = load();
 if (!state) { state = fresh(/[?&]sample=1/.test(location.search)); saveNow(); }
 if (state.timer && state.timer.end < Date.now() - 15 * 60 * 1000) state.timer = null;
 recoveryFromUrl();
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.id === 'acct-pw' && !syncUi.busy) { e.preventDefault(); doAuth('in'); } });
 render(); renderModal(); nativeBoot();
 if (signedIn() && syncReady()) syncPull({});
 if (state.active && state.ui.view === 'workout') keepAwake(true);
