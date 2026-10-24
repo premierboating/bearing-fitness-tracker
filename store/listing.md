@@ -29,7 +29,7 @@ A COACH WITH REASONS
 Every target comes with a short "why". Beat it and the next target moves up. Miss it and the plan adjusts. Feeling off? Make it a light day with one tap, or tell the coach to hold a weight.
 
 A REST TIMER THAT FOLLOWS YOU
-It keeps counting on the lock screen and taps you when it is time for the next set.
+The countdown, the exercise you are on and your next target sit on the lock screen and in the Dynamic Island. When time is up, you hear it and feel it, with four alert sounds to choose from, through headphones if you wear them.
 
 CARDIO AND RECOVERY
 Runs, walks, rides, rowing and more, logged by time and distance. Sauna, cold tub and hot tub tracked next to your workouts.
