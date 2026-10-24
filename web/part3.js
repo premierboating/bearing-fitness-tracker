@@ -543,7 +543,7 @@ function patchLine(i){
 
 /* Rest bar */
 function renderRest(){
-  const t = state.timer, a = state.active; syncRestAlert();
+  const t = state.timer, a = state.active; syncRestAlert(); syncLive();
   if (!t || (t.fired && Date.now() > (t.firedAt || t.end) + 4000)) { if (t && t.fired) state.timer = null; restEl.hidden = true; restEl.innerHTML = ''; screenEl.classList.remove('resting'); return; }
   const left = (t.end - Date.now()) / 1000, over = left <= 0;
   restEl.hidden = false; restEl.classList.toggle('over', over); screenEl.classList.add('resting');
@@ -1569,8 +1569,35 @@ function syncRestAlert(){
     } catch (e) {}
   })();
 }
+/* ---------- Live Activity (iOS lock screen and Dynamic Island) ----------
+   Mirrors the workout outside the app: the exercise being worked on, what to do next, and the rest countdown.
+   Sent whenever something about it changes; ended when the workout is finished or discarded, and on launch when none is running. */
+let liveKey = '';
+function liveLine(a){
+  const en = a.entries[a.idx];
+  if (!en) return {exercise: a.name, detail: a.entries.length ? 'Pick an exercise' : 'Add an exercise'};
+  const e = ex(en.ex), done = counted(en.sets).length, total = en.target.sets || 1, d = en.draft || {};
+  if (e.type === 'cardio') return {exercise: e.name, detail: en.sets.length ? 'Logged' : (d.min ? d.min + ' min' : 'Cardio')};
+  if (done >= total) {
+    const nxt = a.entries.find((x, k) => k !== a.idx && !entryDone(x) && !x.skipped) || a.entries.find((x, k) => k !== a.idx && !entryDone(x));
+    return {exercise: e.name, detail: nxt ? 'Next: ' + ex(nxt.ex).name : 'All sets done. Finish when ready.'};
+  }
+  const tgt = e.time ? (d.r ? d.r + ' s' : '') : ((d.w ? dispW(d.w) + ' ' + wUnit() + ' × ' : '') + (d.r ? d.r + (d.w ? '' : ' reps') : ''));
+  return {exercise: e.name, detail: 'Set ' + (done + 1) + ' of ' + total + (tgt ? ' · ' + tgt : '')};
+}
+function syncLive(){
+  const B = Plug('Bearing'); if (!B || !B.liveActivity) return;
+  const a = state.active;
+  if (!a) { if (liveKey !== 'off') { liveKey = 'off'; B.liveActivity({action: 'end'}).catch(() => {}); } return; }
+  const t = state.timer, resting = !!(t && !t.fired && !a.pausedAt), line = liveLine(a);
+  const msg = {action: 'update', workout: a.name, started: a.start + (a.pausedTotal || 0), exercise: line.exercise, detail: line.detail,
+    restStart: resting ? t.end - t.total * 1000 : 0, restEnd: resting ? t.end : 0, paused: !!a.pausedAt, done: !!(t && t.fired)};
+  const key = JSON.stringify(msg); if (key === liveKey) return; liveKey = key;
+  B.liveActivity(msg).catch(() => {});
+}
 function nativeBoot(){
   if (!NATIVE) return;
+  syncLive();
   try { const SB = Plug('StatusBar'); if (SB) { SB.setStyle({style: 'DARK'}).catch(() => {}); if (SB.setBackgroundColor) SB.setBackgroundColor({color: '#11130F'}).catch(() => {}); } } catch (e) {}
   try { const SS = Plug('SplashScreen'); if (SS) setTimeout(() => SS.hide().catch(() => {}), 150); } catch (e) {}
   try { const A = Plug('App'); if (A && A.addListener) A.addListener('backButton', () => { if (sheet) { closeSheet(); return; } if (state.ui.view === 'workout') { state.ui.view = 'today'; render(); return; } if (state.ui.view !== 'today') { state.ui.view = 'today'; render(); return; } if (A.minimizeApp) A.minimizeApp(); }); } catch (e) {}
@@ -1986,7 +2013,7 @@ setInterval(() => {
   if (a) { const el = $('#elapsed'); if (el) el.textContent = hms(elapsedSec(a)); if (state.ui.view === 'workout') tickIntervals(a); }
   if (state.timer) {
     const t = state.timer;
-    if (a && a.pausedAt) { t.end += 500; const hr = $('#hrest'); if (hr) hr.textContent = 'Paused'; return; }
+    if (a && a.pausedAt) { const hr = $('#hrest'); if (hr) hr.textContent = 'Paused'; return; }
     const left = (t.end - Date.now()) / 1000, over = left <= 0;
     if (over && !t.fired) { t.fired = true; t.firedAt = Date.now(); beep(); buzz(); renderRest(); save(); }
     else if (over && Date.now() > (t.firedAt || t.end) + 4000) { renderRest(); const hr = $('#hrest'); if (hr) hr.textContent = ''; }

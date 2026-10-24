@@ -6,7 +6,7 @@
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const KEY = 'setlist.v1';
-const APP_VERSION = '5.2', FEEDBACK_TO = 'ben@premierboating.com';
+const APP_VERSION = '5.3', FEEDBACK_TO = 'ben@premierboating.com';
 /* The web address of the app: the native app posts feedback there and links to it. */
 const SITE_URL = window.BEARING_SITE_URL || 'https://bearing-beta.netlify.app';
 /* Account service (Supabase project): the anon key is public by design; rows are protected per user on the server. */

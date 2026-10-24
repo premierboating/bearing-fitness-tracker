@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import UIKit
 import Capacitor
+import ActivityKit
 
 /*
  Bearing's own native bits, reachable from the web code as Capacitor.Plugins.Bearing.
@@ -11,6 +12,9 @@ import Capacitor
                    whatever else is playing, which is turned down for the moment the sound lasts and then restored.
                    Resolves with the output route and the media volume so the app can tell the person what happened.
  keepAwake({on})   Keeps the screen on while a workout is running.
+ liveActivity({action, workout, started, exercise, detail, restStart, restEnd, paused, done})
+                   Starts or updates the Live Activity for the workout in progress (lock screen and Dynamic Island),
+                   or ends it with action "end". Times are milliseconds since 1970, as JavaScript hands them over.
  */
 @objc(BearingPlugin)
 public class BearingPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -18,7 +22,8 @@ public class BearingPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "Bearing"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "keepAwake", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "keepAwake", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "liveActivity", returnType: CAPPluginReturnPromise)
     ]
     private var player: AVAudioPlayer?
     private var releaseWork: DispatchWorkItem?
@@ -79,6 +84,58 @@ public class BearingPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async {
             UIApplication.shared.isIdleTimerDisabled = on
             call.resolve(["on": on])
+        }
+    }
+
+    /* The Live Activity mirrors the workout: one activity at a time, updated whenever the app has something new to show. */
+    @objc public func liveActivity(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else {
+            call.resolve(["active": false, "supported": false])
+            return
+        }
+        let action = call.getString("action") ?? "update"
+        if action == "end" {
+            Task {
+                for activity in Activity<RestActivityAttributes>.activities {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
+                call.resolve(["active": false])
+            }
+            return
+        }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            call.resolve(["active": false, "enabled": false])
+            return
+        }
+        let date = { (key: String) -> Date? in
+            if let ms = call.getDouble(key), ms > 0 { return Date(timeIntervalSince1970: ms / 1000) }
+            return nil
+        }
+        let state = RestActivityAttributes.ContentState(
+            exercise: call.getString("exercise") ?? "",
+            detail: call.getString("detail") ?? "",
+            restStart: date("restStart"),
+            restEnd: date("restEnd"),
+            paused: call.getBool("paused") ?? false,
+            done: call.getBool("done") ?? false,
+            started: date("started") ?? Date()
+        )
+        let content = ActivityContent(state: state, staleDate: state.restEnd)
+        let attributes = RestActivityAttributes(workout: call.getString("workout") ?? "Workout")
+        Task {
+            let running = Activity<RestActivityAttributes>.activities
+            if let activity = running.first {
+                await activity.update(content)
+                for extra in running.dropFirst() { await extra.end(nil, dismissalPolicy: .immediate) }
+                call.resolve(["active": true])
+            } else {
+                do {
+                    _ = try Activity<RestActivityAttributes>.request(attributes: attributes, content: content, pushType: nil)
+                    call.resolve(["active": true])
+                } catch {
+                    call.reject("live activity: " + error.localizedDescription)
+                }
+            }
         }
     }
 }
