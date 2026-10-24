@@ -6,6 +6,8 @@ const OUT = process.env.SHOT_OUT || '/mnt/user-data/outputs/store-screenshots';
 const SIZES = [
   { name: 'iphone-6.9', w: 440, h: 956, scale: 3 },
   { name: 'iphone-6.5', w: 428, h: 926, scale: 3 },
+  { name: 'iphone-6.3', w: 402, h: 874, scale: 3 },
+  { name: 'iphone-6.1', w: 393, h: 852, scale: 3 },
   { name: 'ipad-13', w: 1032, h: 1376, scale: 2 },
 ];
 (async () => {

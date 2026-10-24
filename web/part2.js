@@ -6,7 +6,7 @@
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const KEY = 'setlist.v1';
-const APP_VERSION = '5.1', FEEDBACK_TO = 'ben@premierboating.com';
+const APP_VERSION = '5.2', FEEDBACK_TO = 'ben@premierboating.com';
 /* The web address of the app: the native app posts feedback there and links to it. */
 const SITE_URL = window.BEARING_SITE_URL || 'https://bearing-beta.netlify.app';
 /* Account service (Supabase project): the anon key is public by design; rows are protected per user on the server. */
@@ -975,7 +975,7 @@ function routine(id){ return state.routines.find(r => r.id === id) || null; }
 function fresh(withSample){
   const s = {
     v: 1, sample: !!withSample,
-    settings: {unit: 'lb', rest: 90, sound: true, vibrate: true, metrics: {score: true, days7: true, lifted7: true, bwChange: true, run: false, walk: false, cycle: false, swim: false, lifted30: false, days30: false, days60: false, days90: false}, rpSecs: 20, bwReminderDays: 0, showBf: false, wuRest: 60, track: {lift: true, cardio: true}, rec: withSample ? {sauna: true, cold: true, hot: true} : {sauna: false, cold: false, hot: false}, score: true, goalDays: 0, water: {on: false, goal: 0, bonus: true}, lightUntil: null, setupDone: !!withSample},
+    settings: {unit: 'lb', rest: 90, sound: true, vibrate: true, tone: 'chime', metrics: {score: true, days7: true, lifted7: true, bwChange: true, run: false, walk: false, cycle: false, swim: false, lifted30: false, days30: false, days60: false, days90: false}, rpSecs: 20, bwReminderDays: 0, showBf: false, wuRest: 60, track: {lift: true, cardio: true}, rec: withSample ? {sauna: true, cold: true, hot: true} : {sauna: false, cold: false, hot: false}, score: true, goalDays: 0, water: {on: false, goal: 0, bonus: true}, lightUntil: null, setupDone: !!withSample},
     profile: withSample ? {sex: 'm', age: 35, bw: 180, height: 70, activity: 'mod', goal: 'gain', level: 'consistent'} : {sex: null, age: null, bw: null, height: null, activity: 'mod', goal: 'maintain', level: null},
     exRest: {}, exNotes: {}, exTempo: {}, exTm: {}, exWuRest: {},
     bodyweights: withSample ? sampleBodyweights() : [],
@@ -1002,7 +1002,7 @@ function normalizeState(s){
     s.profile = Object.assign({sex: null, age: null, bw: null, height: null, activity: 'mod', goal: 'maintain'}, s.profile || {});
     s.exRest = s.exRest || {}; s.exNotes = s.exNotes || {}; s.exTempo = s.exTempo || {}; s.exTm = s.exTm || {}; s.exWuRest = s.exWuRest || {}; s.bodyweights = s.bodyweights || [];
     s.settings.metrics = Object.assign({score: true, days7: true, lifted7: true, bwChange: true, run: false, walk: false, cycle: false, swim: false, lifted30: false, days30: false, days60: false, days90: false}, s.settings.metrics || {});
-    if (!s.settings.rpSecs) s.settings.rpSecs = 20; s.cycle = Object.assign({on: false, seq: [], start: todayKey()}, s.cycle || {}); if (!Array.isArray(s.cycle.seq)) s.cycle.seq = [];
+    if (!s.settings.rpSecs) s.settings.rpSecs = 20; if (!s.settings.tone) s.settings.tone = 'chime'; s.cycle = Object.assign({on: false, seq: [], start: todayKey()}, s.cycle || {}); if (!Array.isArray(s.cycle.seq)) s.cycle.seq = [];
     if (s.settings.bwReminderDays === undefined) s.settings.bwReminderDays = 0; if (s.settings.showBf === undefined) s.settings.showBf = false; if (s.settings.wuRest === undefined) s.settings.wuRest = 60; s.settings.track = Object.assign({lift: true, cardio: true}, s.settings.track || {}); s.recovery = s.recovery || []; if (!s.settings.rec) { const on = s.settings.track.recovery !== false; s.settings.rec = {sauna: on, cold: on, hot: on}; } delete s.settings.track.recovery; if (!s.settings.track.lift && !s.settings.track.cardio) s.settings.track = {lift: true, cardio: true}; if (s.settings.setupDone === undefined) s.settings.setupDone = true; if (s.settings.score === undefined) s.settings.score = true; if (s.settings.goalDays === undefined) s.settings.goalDays = 0;
     if (!s.settings.water) s.settings.water = {on: false, goal: 0, bonus: true}; if (s.settings.lightUntil === undefined) s.settings.lightUntil = null; s.water = s.water || {};
     s.plan = s.plan || {}; for (const d of [0, 1, 2, 3, 4, 5, 6]) { const v = s.plan[d]; s.plan[d] = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []); }

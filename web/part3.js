@@ -919,7 +919,9 @@ function renderYou(){
       (recoveryOn() ? '<div class="row"><span class="grow" style="font-weight:600">Temperature</span><select class="sm" data-set="tempUnit" style="width:160px"><option value="f"' + sel(false, isC()) + '>°F</option><option value="c"' + sel(true, isC()) + '>°C</option></select></div>' : '') +
       '<div class="row"><span class="grow" style="font-weight:600">Default rest between sets</span><select class="sm" data-set="rest" style="width:160px">' + [45, 60, 90, 120, 150, 180, 240].map(s => '<option value="' + s + '"' + sel(s, state.settings.rest) + '>' + mmss(s) + '</option>').join('') + '</select></div>' +
       '<div class="row"><span class="grow" style="font-weight:600">Rest between warm-up sets</span><select class="sm" data-set="wuRest" style="width:160px">' + wuRestOptionsHTML(state.settings.wuRest) + '</select></div>' +
-      '<div class="row"><span class="grow" style="font-weight:600">When rest ends</span><select class="sm" data-set="alert" style="width:160px"><option value="both"' + sel('both', alert) + '>Buzz and beep</option><option value="vibrate"' + sel('vibrate', alert) + '>Buzz only</option><option value="sound"' + sel('sound', alert) + '>Beep only</option><option value="none"' + sel('none', alert) + '>Silent</option></select></div>' +
+      '<div class="row"><span class="grow" style="font-weight:600">When rest ends</span><select class="sm" data-set="alert" style="width:200px"><option value="both"' + sel('both', alert) + '>Sound and vibration</option><option value="sound"' + sel('sound', alert) + '>Sound only</option><option value="vibrate"' + sel('vibrate', alert) + '>Vibration only</option><option value="none"' + sel('none', alert) + '>Nothing</option></select></div>' +
+      (state.settings.sound ? '<div class="row"><span class="grow" style="font-weight:600">Alert sound</span><select class="sm" data-set="tone" style="width:160px">' + TONES.map(t => '<option value="' + t.id + '"' + sel(t.id, state.settings.tone) + '>' + t.name + '</option>').join('') + '</select></div>' : '') +
+      (alert !== 'none' ? '<div class="row" style="align-items:flex-start;gap:12px"><p class="tiny muted grow" style="margin:0">' + alertHelp() + '</p><button class="btn sm" data-act="alert-test" style="flex:none">Test</button></div>' : '') +
     '</div></div>' +
     accountCard() +
     '<div class="card"><div class="h3" style="margin-bottom:6px">Your data</div><p class="small muted" style="margin:0 0 10px">' + (signedIn() ? 'Your log lives on this phone and in your account. Backups are a second copy you can keep anywhere.' : 'Everything is saved on this device only. Copy a backup now and then, or when moving to a new phone.') + '</p>' +
@@ -1552,18 +1554,18 @@ function doRestore(){
 const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const Plug = name => (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[name]) || null;
 function haptic(kind){ const H = Plug('Haptics'); if (!H) return; try { if (kind === 'alert') H.vibrate({duration: 400}); else if (kind === 'success') H.notification({type: 'SUCCESS'}); else H.impact({style: 'MEDIUM'}); } catch (e) {} }
-let restAlertEnd = 0, restAlertAsked = false;
+let restAlertKey = '', restAlertAsked = false;
 /* One scheduled notification mirrors the rest timer: set when a rest starts, moved when time is added, dropped when it is skipped or paused. */
 function syncRestAlert(){
   const LN = Plug('LocalNotifications'); if (!LN) return;
-  const t = state.timer, a = state.active, want = t && !t.fired && !(a && a.pausedAt) ? t.end : 0;
-  if (want === restAlertEnd) return; restAlertEnd = want;
+  const t = state.timer, a = state.active, want = t && !t.fired && !(a && a.pausedAt) ? t.end : 0, snd = alertFile();
+  const key = want ? want + '|' + snd : ''; if (key === restAlertKey) return; restAlertKey = key;
   (async () => {
     try {
       await LN.cancel({notifications: [{id: 7}]});
       if (!want) return;
       if (!restAlertAsked) { restAlertAsked = true; const p = await LN.checkPermissions(); if (p.display !== 'granted') { const r = await LN.requestPermissions(); if (r.display !== 'granted') return; } }
-      await LN.schedule({notifications: [{id: 7, title: t.kind === 'rp' ? 'Go again' : 'Rest done', body: a ? a.name + ': next set.' : 'Next set.', schedule: {at: new Date(want), allowWhileIdle: true}, sound: 'default'}]});
+      await LN.schedule({notifications: [{id: 7, title: t.kind === 'rp' ? 'Go again' : 'Rest done', body: a ? a.name + ': next set.' : 'Next set.', schedule: {at: new Date(want), allowWhileIdle: true}, sound: snd || undefined}]});
     } catch (e) {}
   })();
 }
@@ -1577,18 +1579,69 @@ function nativeBoot(){
 /* ---------- device niceties ---------- */
 let wl = null;
 async function keepAwake(on){
+  const B = Plug('Bearing'); if (B && B.keepAwake) { B.keepAwake({on: !!on}).catch(() => {}); return; }
   try {
     if (on && !wl && navigator.wakeLock) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); }
     else if (!on && wl) { await wl.release(); wl = null; }
   } catch (e) { wl = null; }
 }
-let actx = null;
-function unlockAudio(){ try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; if (!actx) actx = new AC(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
-function beep(){
-  if (!state.settings.sound || !actx) return;
-  try { const t = actx.currentTime; [0, 0.2, 0.4].forEach(off => { const o = actx.createOscillator(), g = actx.createGain(); o.type = 'sine'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, t + off); g.gain.exponentialRampToValueAtTime(0.3, t + off + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.16); o.connect(g); g.connect(actx.destination); o.start(t + off); o.stop(t + off + 0.18); }); } catch (e) {}
+/* ---------- the rest alert ----------
+   Each tone is a small synth patch scheduled on a Web Audio context. The website plays the patch live; tools/render_tones.js renders
+   the same patches to the .wav files that the App Store app plays natively (over the ring switch, through headphones, ducking music)
+   and that the lock-screen notification uses, so every route sounds the same. */
+const TONES = [{id: 'chime', name: 'Chime', file: 'chime.wav'}, {id: 'bell', name: 'Bell', file: 'bell.wav'}, {id: 'beep', name: 'Beep', file: 'beep.wav'}, {id: 'buzzer', name: 'Buzzer', file: 'buzzer.wav'}];
+const TONE_LEVEL = {chime: 1.35, bell: 1.1, beep: 1.4, buzzer: 1.5};
+const toneOf = () => TONES.find(t => t.id === state.settings.tone) || TONES[0];
+/* The file the notification plays: the chosen tone, a silent file when only vibration is wanted (the vibration rides on it), nothing otherwise. */
+const alertFile = () => state.settings.sound ? toneOf().file : (state.settings.vibrate ? 'silent.wav' : '');
+function toneGraph(ctx, dest, id, t0){
+  const master = ctx.createGain(); master.gain.value = TONE_LEVEL[id] || 0.8; master.connect(dest);
+  let end = t0;
+  /* a voice is a stack of partials [ratio, level, wave, length share]; 'ring' fades like a struck bar, 'hold' stays flat then stops */
+  const voice = (freq, at, dur, peak, partials, shape) => {
+    partials.forEach(p => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), len = dur * (p[3] || 1);
+      o.type = p[2] || 'sine'; o.frequency.value = freq * p[0];
+      g.gain.setValueAtTime(0.0001, at); g.gain.linearRampToValueAtTime(peak * p[1], at + 0.008);
+      if (shape === 'hold') { g.gain.setValueAtTime(peak * p[1], at + len - 0.03); g.gain.linearRampToValueAtTime(0.0001, at + len); }
+      else { g.gain.exponentialRampToValueAtTime(peak * p[1] * 0.03, at + len); g.gain.linearRampToValueAtTime(0.0001, at + len + 0.06); }
+      o.connect(g); g.connect(master); o.start(at); o.stop(at + len + 0.08);
+    });
+    end = Math.max(end, at + dur + 0.08);
+  };
+  if (id === 'bell') { [0, 0.6].forEach(off => voice(740, t0 + off, 1.6, 0.42, [[1, 1], [2, 0.5, 'sine', 0.7], [2.76, 0.28, 'sine', 0.5], [5.4, 0.12, 'sine', 0.3]])); }
+  else if (id === 'beep') { [0, 0.22, 0.44].forEach(off => voice(880, t0 + off, 0.15, 0.5, [[1, 1, 'triangle'], [2, 0.25]], 'hold')); }
+  else if (id === 'buzzer') { [0, 0.5].forEach(off => voice(220, t0 + off, 0.36, 0.35, [[1, 1, 'sawtooth'], [0.5, 0.6, 'square']], 'hold')); }
+  else { voice(1047, t0, 0.8, 0.45, [[1, 1], [2, 0.35, 'sine', 0.6], [3, 0.1, 'sine', 0.4]]); voice(1568, t0 + 0.22, 1.0, 0.45, [[1, 1], [2, 0.3, 'sine', 0.6], [3, 0.08, 'sine', 0.4]]); }
+  return end;
 }
-function buzz(){ if (!state.settings.vibrate) return; if (NATIVE) { haptic('alert'); return; } if (navigator.vibrate) { try { navigator.vibrate([200, 90, 200]); } catch (e) {} } }
+let actx = null;
+/* Web Audio needs a tap before it may speak; the App Store app plays natively and never opens a context. */
+function unlockAudio(){ if (Plug('Bearing')) return; try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; if (!actx) actx = new AC(); if (actx.state !== 'running') actx.resume(); } catch (e) {} }
+/* Play the chosen tone. Resolves with what the native player reports (route, volume), or null on the web. */
+function beep(){
+  if (!state.settings.sound) return Promise.resolve(null);
+  const B = Plug('Bearing'); if (B && B.play) return B.play({name: toneOf().file}).catch(() => null);
+  if (!actx) return Promise.resolve(null);
+  const go = () => { try { toneGraph(actx, actx.destination, toneOf().id, actx.currentTime + 0.02); } catch (e) {} return null; };
+  if (actx.state !== 'running') { try { return actx.resume().then(go, () => null); } catch (e) { return Promise.resolve(null); } }
+  return Promise.resolve(go());
+}
+function buzz(){ if (!state.settings.vibrate) return; if (NATIVE) { haptic('alert'); setTimeout(() => haptic('alert'), 600); return; } if (navigator.vibrate) { try { navigator.vibrate([260, 140, 260]); } catch (e) {} } }
+function alertHelp(){
+  if (Plug('Bearing')) return 'Plays at media volume even with the ring switch on silent, through headphones when they are connected, and turns your music down for a moment. With the phone locked, the alert arrives as a notification and follows the ring switch.';
+  if (NATIVE) return 'Plays at media volume, through headphones when they are connected. With the screen off, the alert arrives as a notification.';
+  return 'Plays at media volume while Bearing is open' + (/iPhone|iPad/.test(navigator.userAgent) ? '. Safari mutes it when the ring switch is on silent; the App Store app does not have that limit.' : '.');
+}
+function testAlert(){
+  unlockAudio(); buzz();
+  if (!state.settings.sound) { toast('Vibration only'); return; }
+  beep().then(r => {
+    if (r && r.volume === 0) toast('Media volume is all the way down');
+    else if (r && /Headphones|Bluetooth|AirPlay|USB|HDMI|CarAudio/i.test(r.route || '')) toast('Played through ' + (r.routeName || 'headphones'));
+    else toast('Played');
+  });
+}
 
 /* ---------- events ---------- */
 app.addEventListener('click', e => {
@@ -1610,6 +1663,7 @@ app.addEventListener('click', e => {
     case 'forgot-pw': doAuth('forgot'); break;
     case 'sign-out': sheet = {type: 'signout'}; renderModal(); break;
     case 'sign-out-go': signOut(); break;
+    case 'alert-test': testAlert(); break;
     case 'acct-delete-ask': sheet = {type: 'acct-delete'}; renderModal(); break;
     case 'acct-delete': { syncUi.busy = true; patchSyncLine(); authFetch('/rest/v1/rpc/delete_user', {method: 'POST', body: '{}'}).then(res => { syncUi.busy = false; if (!res.ok) throw new Error('Could not delete the account just now'); setAuth(null); clearPhone(); closeSheet(); render(); toast('Account deleted.'); }).catch(e => { syncUi.busy = false; syncUi.error = e.message; patchSyncLine(); }); break; }
     case 'sync-now': { syncPull({force: true, toast: true}).then(ok => { if (ok) syncPush(); }); break; }
@@ -1792,7 +1846,8 @@ app.addEventListener('change', e => {
     const k = el.dataset.set;
     if (k === 'unit') state.settings.unit = el.value;
     else if (k === 'rest') state.settings.rest = +el.value;
-    else if (k === 'alert') { state.settings.sound = el.value === 'both' || el.value === 'sound'; state.settings.vibrate = el.value === 'both' || el.value === 'vibrate'; }
+    else if (k === 'alert') { state.settings.sound = el.value === 'both' || el.value === 'sound'; state.settings.vibrate = el.value === 'both' || el.value === 'vibrate'; syncRestAlert(); }
+    else if (k === 'tone') { state.settings.tone = TONES.some(t => t.id === el.value) ? el.value : 'chime'; unlockAudio(); beep(); syncRestAlert(); }
     else if (k === 'bwReminderDays') state.settings.bwReminderDays = +el.value;
     else if (k === 'wuRest') state.settings.wuRest = +el.value;
     else if (k === 'tempUnit') state.settings.tempUnit = el.value;
@@ -2105,7 +2160,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target &&
 render(); renderModal(); nativeBoot();
 if (signedIn() && syncReady()) syncPull({});
 if (state.active && state.ui.view === 'workout') keepAwake(true);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); else { if (signedIn() && syncReady()) syncPull({}); if (state.active && state.ui.view === 'workout') keepAwake(true); if (state.timer) renderRest(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); else { if (signedIn() && syncReady()) syncPull({}); if (state.active && state.ui.view === 'workout') keepAwake(true); if (state.timer) renderRest(); if (actx && actx.state !== 'running') { try { actx.resume(); } catch (e) {} } } });
 window.addEventListener('pagehide', saveNow);
 window.addEventListener('online', () => { if (signedIn() && syncReady()) syncPull({}).then(() => syncPush()); });
 try {

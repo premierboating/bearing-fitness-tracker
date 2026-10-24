@@ -1,0 +1,19 @@
+{
+  "name": "bearing-native",
+  "version": "1.0.0",
+  "description": "Bearing's own native bits: the rest alert sound and the screen-awake switch.",
+  "private": true,
+  "license": "UNLICENSED",
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}
