@@ -11,9 +11,8 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.bengruver.bearing
-      node: 20
+      node: 22
       xcode: latest
-      cocoapods: default
     triggering:
       events: [push]
       branch_patterns:
@@ -46,8 +45,8 @@ workflows:
     instance_type: linux_x2
     max_build_duration: 45
     environment:
-      node: 20
-      java: 17
+      node: 22
+      java: 21
     triggering:
       events: [push]
       branch_patterns:
