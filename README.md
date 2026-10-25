@@ -71,4 +71,5 @@ cd tests && node shot81.js                 # smoke test
 node shot83.js                             # native bridge with a fake Capacitor (needs the mock too)
 node shot85.js                             # the rest alert: settings, tones, notification sound, native player
 node shot86.js                             # the Live Activity bridge and the pause fix
+node shot87.js                             # What you track: confirm before turning a half off, notice in the exercise list, tiles restored
 ```

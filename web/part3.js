@@ -879,6 +879,20 @@ function sendFeedback(){
     else fetch('/', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(fields).toString()}).then(r => { if (r.ok) done('sent'); else mail(); }, mail);
   } else mail();
 }
+/* Half the library is switched off under What you track: say so where people would otherwise think it vanished. */
+function trackOffNote(){
+  const t = state.settings.track; if (t.lift && t.cardio) return '';
+  const k = t.lift ? 'cardio' : 'lift';
+  return '<div class="card" style="padding:10px 12px;margin:0 0 10px"><div class="row" style="gap:10px"><span class="small grow">' + (k === 'lift' ? 'Lifting is off, so lifts are hidden here. Nothing logged is lost.' : 'Cardio is off, so cardio is hidden here. Nothing logged is lost.') + '</span><button class="btn sm" data-act="track-on" data-k="' + k + '" style="flex:none">Turn ' + (k === 'lift' ? 'lifting' : 'cardio') + ' on</button></div></div>';
+}
+/* Lifting or cardio on or off. Off hides that half of the app and its home tiles; on brings the usual tiles back. */
+function setTrack(k, on){
+  const tr = state.settings.track, m = state.settings.metrics, keys = k === 'lift' ? ['lifted7', 'lifted30'] : ['cardio7', 'run', 'walk', 'cycle', 'swim']; tr[k] = !!on;
+  m.was = m.was || {};
+  if (on) { const was = m.was[k]; keys.forEach(x => { m[x] = was ? !!was[x] : x === 'lifted7' || x === 'cardio7'; }); delete m.was[k]; }
+  else { m.was[k] = {}; keys.forEach(x => { m.was[k][x] = !!m[x]; m[x] = false; }); }
+  save();
+}
 function trackCard(){
   const t = state.settings.track;
   const chip = (k, label, on) => '<button class="chip' + (on ? ' on' : '') + '" data-act="track" data-k="' + k + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + label + (on ? ' ✓' : '') + '</button>';
@@ -1172,6 +1186,9 @@ function renderModal(){
       '<button class="btn primary" style="margin-top:14px" data-act="rec-log">Log ' + k[1].toLowerCase() + '</button>';
   } else if (sheet.type === 'account') {
     inner = '<div class="between"><div class="h2">Sign in</div><button class="btn sm ghost" data-act="close">Close</button></div><p class="small muted" style="margin:8px 0 12px">Your log comes back from your account, and this phone keeps saving to it.</p>' + accountForm(true);
+  } else if (sheet.type === 'track-off') {
+    const lift = sheet.k === 'lift';
+    inner = '<div class="h2">Turn ' + (lift ? 'lifting' : 'cardio') + ' off?</div><p style="margin:8px 0 14px">' + (lift ? 'Lifts disappear from the exercise list, and the strength standards and lifted tiles go away, until you turn it back on.' : 'Cardio disappears from the exercise list, and the cardio tiles go away, until you turn it back on.') + ' Nothing you have logged is lost.</p><div class="row"><button class="btn grow" data-act="close">Keep it on</button><button class="btn grow ghost" data-act="track-off-go">Turn off</button></div>';
   } else if (sheet.type === 'signout') {
     inner = '<div class="h2">Sign out?</div><p style="margin:8px 0 14px">Your log stays in your account and is removed from this phone. Sign in again any time to get it back.</p><div class="row"><button class="btn grow" data-act="close">Stay signed in</button><button class="btn grow ghost" data-act="sign-out-go">Sign out</button></div><div class="small" id="syncline" style="margin-top:8px">' + syncLine() + '</div>';
   } else if (sheet.type === 'acct-delete') {
@@ -1195,7 +1212,7 @@ function renderModal(){
       '<button class="item" data-act="start-routine" data-rid=""><span><b>Blank workout</b><br><span class="small muted">Add exercises as you go</span></span><span class="g">Start</span></button></div>';
   } else if (sheet.type === 'pick-ex') {
     inner = '<div class="between"><div class="h2">' + (sheet.for === 'swap' ? 'Swap ' + esc(ex(state.active.entries[sheet.i].ex).name) + ' for' : 'Add exercise') + '</div><button class="btn sm ghost" data-act="' + (sheet.for === 'routine' ? 'back-routine' : 'close') + '">' + (sheet.for === 'routine' ? 'Back' : 'Close') + '</button></div>' +
-      '<input class="input" id="exsearch" placeholder="Search ' + CATALOG.concat(state.custom).filter(visibleEx).length + ' exercises, or type a new one" value="' + esc(sheet.q || '') + '" style="margin:10px 0" autocomplete="off">' + exChipsHTML() + '<div class="list" id="exlist">' + exListHTML() + '</div>';
+      '<input class="input" id="exsearch" placeholder="Search ' + CATALOG.concat(state.custom).filter(visibleEx).length + ' exercises, or type a new one" value="' + esc(sheet.q || '') + '" style="margin:10px 0" autocomplete="off">' + trackOffNote() + exChipsHTML() + '<div class="list" id="exlist">' + exListHTML() + '</div>';
   } else if (sheet.type === 'routine') {
     const r = routine(sheet.rid); if (!r) { sheet = null; modalEl.innerHTML = ''; return; }
     inner = '<div class="row"><input class="input grow" data-rname="' + r.id + '" value="' + esc(r.name) + '" aria-label="Routine name" style="font-family:var(--display);font-size:22px;font-weight:700;text-transform:uppercase"><button class="btn sm good" data-act="close">Done</button></div>' +
@@ -1792,7 +1809,9 @@ app.addEventListener('click', e => {
     case 'a2hs-off': state.settings.a2hs = 'off'; render(); break;
     case 'backup-later': state.settings.backupSnooze = Date.now(); render(); break;
     case 'rec-kind': { const k = t.dataset.k; state.settings.rec[k] = !state.settings.rec[k]; if (!state.settings.rec[k]) state.settings.metrics[k + '7'] = false; render(); break; }
-    case 'track': { const k = t.dataset.k, tr = state.settings.track; if (tr[k] && !tr[k === 'lift' ? 'cardio' : 'lift']) { toast('Keep at least one on'); break; } tr[k] = !tr[k]; const m = state.settings.metrics; if (!tr.lift) { m.lifted7 = false; m.lifted30 = false; } if (!tr.cardio) { m.run = false; m.walk = false; m.cycle = false; m.swim = false; } render(); break; }
+    case 'track': { const k = t.dataset.k, tr = state.settings.track; if (tr[k]) { if (!tr[k === 'lift' ? 'cardio' : 'lift']) { toast('Keep at least one on'); break; } sheet = {type: 'track-off', k: k}; renderModal(); break; } setTrack(k, true); render(); break; }
+    case 'track-off-go': setTrack(sheet.k, false); closeSheet(); render(); break;
+    case 'track-on': { const k = t.dataset.k; setTrack(k, true); if (sheet && sheet.type === 'pick-ex') renderModal(); else closeSheet(); render(); toast((k === 'lift' ? 'Lifting' : 'Cardio') + ' is back on'); break; }
     case 'cardio-mode': { const en = state.active.entries[i], e = ex(en.ex), d = en.draft, m = t.dataset.m; if (!d.ivl) d.ivl = ivlDefaults(e);
       if (m === 'out') { d.tm = false; d.ivl.on = false; }
       else if (m === 'tm' || m === 'steady') { if (tmEligible(e)) d.tm = true; d.ivl.on = false; }
