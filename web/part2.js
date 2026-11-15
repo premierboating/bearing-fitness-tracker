@@ -6,7 +6,7 @@
 const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const KEY = 'setlist.v1';
-const APP_VERSION = '5.4', FEEDBACK_TO = 'ben@premierboating.com';
+const APP_VERSION = '5.5', FEEDBACK_TO = 'ben@premierboating.com';
 /* The web address of the app: the native app posts feedback there and links to it. */
 const SITE_URL = window.BEARING_SITE_URL || 'https://bearing-beta.netlify.app';
 /* Account service (Supabase project): the anon key is public by design; rows are protected per user on the server. */
@@ -979,7 +979,7 @@ function fresh(withSample){
     profile: withSample ? {sex: 'm', age: 35, bw: 180, height: 70, activity: 'mod', goal: 'gain', level: 'consistent'} : {sex: null, age: null, bw: null, height: null, activity: 'mod', goal: 'maintain', level: null},
     exRest: {}, exNotes: {}, exTempo: {}, exTm: {}, exWuRest: {},
     bodyweights: withSample ? sampleBodyweights() : [],
-    custom: [], recovery: [], water: {}, cycle: {on: false, seq: [], start: todayKey()}, deleted: {w: {}, r: {}}, sync: {rev: 0},
+    custom: [], recovery: [], water: {}, ach: {earned: {}}, cycle: {on: false, seq: [], start: todayKey()}, deleted: {w: {}, r: {}}, sync: {rev: 0},
     routines: withSample ? ['push','pull','legs','run'].map(id => routineFromTemplate(TEMPLATES.find(t => t.id === id))) : [],
     plan: withSample ? {0: [], 1: ['push'], 2: ['pull'], 3: ['run'], 4: ['legs'], 5: [], 6: ['run']} : {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: []},
     workouts: [], active: null, timer: null, since: todayKey(),
@@ -1009,6 +1009,7 @@ function normalizeState(s){
     if (s.active && s.active.pausedTotal === undefined) s.active.pausedTotal = 0;
     if (!s.since) s.since = earliestDate(s.workouts);
     s.deleted = Object.assign({w: {}, r: {}}, s.deleted || {}); s.sync = Object.assign({rev: 0}, s.sync || {});
+    s.ach = Object.assign({earned: {}}, s.ach || {}); if (!s.ach.earned || typeof s.ach.earned !== 'object') s.ach.earned = {};
     return s;
   } catch (e) { return null; }
 }
@@ -1833,3 +1834,140 @@ function makeSample(s){
   return out;
 }
 
+/* ---------- the 1000 lb club ----------
+   Squat + bench + deadlift, each the best estimated single from the last 90 days. The strict lifts are the back squat, the flat
+   barbell bench and a conventional or sumo deadlift; when none of those is in the log, the closest barbell variant stands in and
+   is named as a stand-in. A lift not done in 90 days falls back to its all-time best and is marked old. Estimates come from sets
+   of twelve or fewer; a twenty-rep set says little about a single. */
+const CLUB_LIFTS = [
+  {key: 'squat', name: 'Squat', share: 0.35, strict: ['squat', 'highbar', 'lowbar', 'pausesquat', 'pinsquat', 'andersonsquat'], standin: ['boxsquat', 'ssbsquat', 'frontsquat', 'zercher']},
+  {key: 'bench', name: 'Bench', share: 0.25, strict: ['bench', 'pausebench', 'tempobench', 'wgbench'], standin: ['cgbench', 'decbench', 'incbench', 'floorpress', 'revgripbench']},
+  {key: 'deadlift', name: 'Deadlift', share: 0.40, strict: ['deadlift', 'sumo', 'pausedl', 'deficitdl', 'snatchdl'], standin: ['trapbar', 'trapbarhigh', 'rdl', 'sldl']}
+];
+const CLUB_TIERS = [500, 750, 1000, 1200, 1500];
+const CLUB_DAYS = 90;
+/* The best estimated single for a set of exercises, with the set it came from. since: only sets on or after that day. */
+function bestSingle(ids, since){
+  let best = null;
+  for (const w of state.workouts) {
+    if (since && w.date < since) continue;
+    for (const en of w.entries) {
+      if (ids.indexOf(en.ex) < 0) continue;
+      for (const st of working(en.sets)) {
+        if (!st.w || !st.r || st.r > 12) continue;
+        const v = e1rmBlend(st.w, st.r);
+        if (v > 0 && (!best || v > best.e1 + 0.01 || (Math.abs(v - best.e1) <= 0.01 && w.date > best.date))) best = {e1: v, w: st.w, r: st.r, date: w.date, ex: en.ex};
+      }
+    }
+  }
+  return best;
+}
+function clubStanding(){
+  const since = keyOf(addDays(new Date(), -CLUB_DAYS));
+  const lifts = CLUB_LIFTS.map(L => {
+    let b = bestSingle(L.strict, since), standin = false, old = false;
+    if (!b) { b = bestSingle(L.strict, null); if (b) old = true; }
+    if (!b) { b = bestSingle(L.standin, since); if (b) standin = true; }
+    if (!b) { b = bestSingle(L.standin, null); if (b) { standin = true; old = true; } }
+    return Object.assign({key: L.key, name: L.name, share: L.share, standin: standin, old: old}, b ? {e1: b.e1, w: b.w, r: b.r, date: b.date, ex: b.ex} : {e1: 0});
+  });
+  const have = lifts.filter(l => l.e1 > 0), total = have.reduce((n, l) => n + l.e1, 0);
+  const tier = CLUB_TIERS.filter(t => total >= t).pop() || 0, next = CLUB_TIERS.find(t => total < t) || null;
+  /* the lever: the lift furthest below its usual share of the next tier (squat 35%, bench 25%, deadlift 40%) */
+  let lever = null;
+  if (next && have.length === 3) for (const l of lifts) { const want = next * l.share, gap = want - l.e1; if (gap > 0 && (!lever || gap > lever.gap)) lever = {name: l.name, want: want, gap: gap, e1: l.e1}; }
+  const bw = state.profile.bw || 0;
+  return {lifts: lifts, have: have.length, total: total, tier: tier, next: next, toGo: next ? next - total : 0, lever: lever, ratio: bw && have.length === 3 ? total / bw : 0, since: since};
+}
+/* The club total as it stood after each workout, from running all-time bests: the date a tier was first reached. */
+function clubTierDates(){
+  const sorted = state.workouts.slice().sort((a, b) => a.start - b.start), best = {}, dates = {}, fam = {};
+  CLUB_LIFTS.forEach(L => L.strict.concat(L.standin).forEach(id => { fam[id] = L.key; }));
+  for (const w of sorted) {
+    for (const en of w.entries) { const k = fam[en.ex]; if (!k) continue; for (const st of working(en.sets)) { if (!st.w || !st.r || st.r > 12) continue; const v = e1rmBlend(st.w, st.r); if (v > (best[k] || 0)) best[k] = v; } }
+    if (best.squat && best.bench && best.deadlift) { const tot = best.squat + best.bench + best.deadlift; for (const t of CLUB_TIERS) if (tot >= t && !dates[t]) dates[t] = w.date; }
+  }
+  return dates;
+}
+
+/* ---------- achievements ----------
+   Earned from the log itself, so they are the same on every phone and survive a reinstall. Each one knows whether it is done,
+   how far along it is, and when it was first earned where the log can say; otherwise the day the app first noticed counts. */
+const ACHV_CATS = [['consistency', 'Consistency'], ['strength', 'Strength'], ['volume', 'Volume'], ['cardio', 'Cardio'], ['hydration', 'Hydration']];
+/* prog is 0..1; line is the short progress text; date is the day it was earned when the log can tell. */
+function achvList(){
+  const A = [];
+  const add = (id, cat, name, desc, icon, fn) => A.push({id: id, cat: cat, name: name, desc: desc, icon: icon, fn: fn});
+  const sorted = state.workouts.slice().sort((a, b) => a.start - b.start);
+  const nth = n => sorted.length >= n ? sorted[n - 1].date : null;
+  const count = (n, id, name) => add(id, 'consistency', name, n === 1 ? 'Log your first workout' : 'Log ' + n + ' workouts', 'flame', () => ({done: sorted.length >= n, prog: Math.min(1, sorted.length / n), line: Math.min(sorted.length, n) + ' of ' + n, date: nth(n)}));
+  count(1, 'w1', 'First rep'); count(10, 'w10', 'Ten in'); count(50, 'w50', 'Fifty'); count(100, 'w100', 'Century'); count(250, 'w250', 'Two fifty');
+  /* streaks: the longest run of consecutive weeks with a workout, and when a run first reached each length */
+  const weeks = Array.from(new Set(sorted.map(w => weekStart(w.date)))).sort(), runAt = {}; let run = 0, prev = null, longest = 0;
+  for (const k of weeks) { run = prev && keyOf(addDays(dateOf(prev), 7)) === k ? run + 1 : 1; prev = k; if (run > longest) longest = run; if (!runAt[run]) runAt[run] = k; }
+  const cur = streakWeeks();
+  [[4, 's4', 'Four in a row'], [12, 's12', 'Twelve in a row'], [26, 's26', 'Half a year']].forEach(x => add(x[1], 'consistency', x[2], x[0] + ' weeks in a row with a workout', 'calendar', () => ({done: longest >= x[0], prog: Math.min(1, Math.max(cur, longest) / x[0]), line: (longest >= x[0] ? x[0] : cur) + ' of ' + x[0] + ' weeks', date: runAt[x[0]] || null})));
+  /* the weekly goal, met four weeks running */
+  add('plan4', 'consistency', 'Plan kept', 'Hit your weekly goal four weeks in a row', 'target', () => {
+    const tgt = weeklyTarget(); if (!tgt) return {done: false, prog: 0, line: 'set a weekly goal under Plan'};
+    const per = {}; sorted.forEach(w => { const k = weekStart(w.date); per[k] = (per[k] || 0) + 1; });
+    let best = 0, r = 0, p = null, at = null, now = 0;
+    for (const k of Object.keys(per).sort()) { r = p && keyOf(addDays(dateOf(p), 7)) === k && per[k] >= tgt ? r + 1 : (per[k] >= tgt ? 1 : 0); p = k; if (r > best) best = r; if (r >= 4 && !at) at = k; }
+    let k = weekStart(todayKey()); if ((per[k] || 0) < tgt) k = keyOf(addDays(dateOf(k), -7)); while ((per[k] || 0) >= tgt) { now++; k = keyOf(addDays(dateOf(k), -7)); }
+    return {done: best >= 4, prog: Math.min(1, Math.max(now, best) / 4), line: (best >= 4 ? 4 : now) + ' of 4 weeks', date: at};
+  });
+  /* strength */
+  let prs = 0, pr1 = null, pr50 = null; for (const w of sorted) { const n = (w.prs || []).length; if (n) { if (!pr1) pr1 = w.date; prs += n; if (prs >= 50 && !pr50) pr50 = w.date; } }
+  add('pr1', 'strength', 'First PR', 'Beat your best estimated single on any lift', 'bolt', () => ({done: prs >= 1, prog: Math.min(1, prs), line: prs ? 'done' : '0 of 1', date: pr1}));
+  add('pr50', 'strength', 'PR collector', 'Fifty personal records', 'bolt', () => ({done: prs >= 50, prog: Math.min(1, prs / 50), line: Math.min(prs, 50) + ' of 50', date: pr50}));
+  const club = clubStanding(), tierDates = clubTierDates();
+  CLUB_TIERS.forEach(t => add('club' + t, 'strength', t.toLocaleString('en-US') + ' lb club', 'Squat, bench and deadlift adding up to ' + t.toLocaleString('en-US') + ' lb' + (isKg() ? ' (' + Math.round(t / LB_PER_KG) + ' kg)' : ''), 'trophy', () => ({done: !!tierDates[t] || club.total >= t, prog: Math.min(1, club.total / t), line: fmtVol(Math.min(club.total, t)) + ' of ' + fmtVol(t) + ' ' + wUnit(), date: tierDates[t] || null})));
+  const bw = state.profile.bw || 0;
+  [['bwbench', 'Body-weight bench', 'Bench press your body weight', 'bench', 1.0], ['squat15', '1.5× squat', 'Squat one and a half times your body weight', 'squat', 1.5], ['dead2', '2× deadlift', 'Deadlift twice your body weight', 'deadlift', 2.0]].forEach(x => {
+    const L = CLUB_LIFTS.find(l => l.key === x[3]);
+    add(x[0], 'strength', x[1], x[2], 'plate', () => {
+      if (!bw) return {done: false, prog: 0, line: 'add your body weight under You'};
+      const want = bw * x[4]; let at = null, best = 0;
+      for (const w of sorted) { for (const en of w.entries) { if (L.strict.indexOf(en.ex) < 0) continue; for (const st of working(en.sets)) { if (!st.w || !st.r || st.r > 12) continue; const v = e1rmBlend(st.w, st.r); if (v > best) best = v; } } if (best >= want && !at) at = w.date; }
+      return {done: best >= want, prog: Math.min(1, best / want), line: fmtVol(Math.min(best, want)) + ' of ' + fmtVol(want) + ' ' + wUnit(), date: at};
+    });
+  });
+  const st = strengthStanding();
+  [['std3', 'Intermediate across the board', 'Your lifts average intermediate on the standards', 3], ['std4', 'Advanced across the board', 'Your lifts average advanced on the standards', 4]].forEach(x => add(x[0], 'strength', x[1], x[2], 'ladder', () => ({done: st.ok && st.level >= x[3], prog: st.ok && st.ranked.length ? Math.min(1, st.ranked.reduce((a, r) => a + Math.min(5, r.lv.idx + r.lv.prog), 0) / st.ranked.length / x[3]) : 0, line: st.ok && st.label ? st.label : 'log the main lifts with body weight set', date: null})));
+  /* volume */
+  let vol = 0; const volAt = {}; for (const w of sorted) { vol += volumeOf(w); for (const t of [100000, 500000, 1000000]) if (vol >= t && !volAt[t]) volAt[t] = w.date; }
+  [[100000, 'v100k', 'A hundred thousand'], [500000, 'v500k', 'Half a million'], [1000000, 'v1m', 'A million']].forEach(x => add(x[1], 'volume', x[2], fmtVol(x[0]) + ' ' + wUnit() + ' lifted, all time', 'stack', () => ({done: vol >= x[0], prog: Math.min(1, vol / x[0]), line: fmtVol(Math.min(vol, x[0])) + ' of ' + fmtVol(x[0]) + ' ' + wUnit(), date: volAt[x[0]] || null})));
+  /* cardio */
+  let miles = 0, firstCardio = null, k5 = null, k10 = null; const miAt = {};
+  for (const w of sorted) { const c = cardioOf(w); if (c.sec || c.mi) { if (!firstCardio) firstCardio = w.date; } miles += c.mi; for (const t of [100, 500]) if (miles >= t && !miAt[t]) miAt[t] = w.date;
+    for (const en of w.entries) { if (!RUN_IDS[en.ex]) continue; const d = en.sets.reduce((n, s) => n + (s.mi || 0), 0); if (d >= 3.1 && !k5) k5 = w.date; if (d >= 6.2 && !k10) k10 = w.date; } }
+  add('c1', 'cardio', 'First cardio', 'Log a cardio session', 'wave', () => ({done: !!firstCardio, prog: firstCardio ? 1 : 0, line: firstCardio ? 'done' : '0 of 1', date: firstCardio}));
+  add('k5', 'cardio', '5K', 'Run 5 km (3.1 mi) in one go', 'shoe', () => ({done: !!k5, prog: k5 ? 1 : Math.min(1, longestRun() / 3.1), line: k5 ? 'done' : dispD(longestRun()) + ' of ' + dispD(3.1) + ' ' + dUnit() + ' in one run', date: k5}));
+  add('k10', 'cardio', '10K', 'Run 10 km (6.2 mi) in one go', 'shoe', () => ({done: !!k10, prog: k10 ? 1 : Math.min(1, longestRun() / 6.2), line: k10 ? 'done' : dispD(longestRun()) + ' of ' + dispD(6.2) + ' ' + dUnit() + ' in one run', date: k10}));
+  [[100, 'mi100', 'A hundred miles'], [500, 'mi500', 'Five hundred miles']].forEach(x => add(x[1], 'cardio', x[2], dispD(x[0]) + ' ' + dUnit() + ' of cardio, all time', 'wave', () => ({done: miles >= x[0], prog: Math.min(1, miles / x[0]), line: dispD(Math.min(miles, x[0])) + ' of ' + dispD(x[0]) + ' ' + dUnit(), date: miAt[x[0]] || null})));
+  /* hydration: days at goal, in a row */
+  add('h7', 'hydration', 'Hydrated week', 'Hit your water goal seven days in a row', 'drop', () => hydrationRun(7));
+  add('h30', 'hydration', 'Hydrated month', 'Hit your water goal thirty days in a row', 'drop', () => hydrationRun(30));
+  return A;
+}
+function longestRun(){ let b = 0; for (const w of state.workouts) for (const en of w.entries) { if (!RUN_IDS[en.ex]) continue; const d = en.sets.reduce((n, s) => n + (s.mi || 0), 0); if (d > b) b = d; } return b; }
+function hydrationRun(n){
+  const days = Object.keys(state.water || {}).filter(d => waterTotal(d) >= waterGoal(d).total).sort();
+  let best = 0, r = 0, p = null, at = null;
+  for (const d of days) { r = p && keyOf(addDays(dateOf(p), 1)) === d ? r + 1 : 1; p = d; if (r > best) best = r; if (r >= n && !at) at = d; }
+  let now = 0, k = todayKey(); if (days.indexOf(k) < 0) k = keyOf(addDays(dateOf(k), -1)); while (days.indexOf(k) >= 0) { now++; k = keyOf(addDays(dateOf(k), -1)); }
+  return {done: best >= n, prog: Math.min(1, Math.max(now, best) / n), line: (best >= n ? n : now) + ' of ' + n + ' days', date: at};
+}
+/* Evaluate everything once, remember first-earned dates, and report what is new since the last look. */
+function achievements(){
+  if (!state.ach) state.ach = {earned: {}};
+  const list = achvList(), out = [], fresh = [], today = todayKey(), first = !state.ach.init;
+  for (const a of list) {
+    const r = a.fn(); const was = state.ach.earned[a.id];
+    if (r.done && !was) { state.ach.earned[a.id] = r.date || today; if (!first) fresh.push(a.id); }
+    out.push(Object.assign({}, a, r, {earnedOn: state.ach.earned[a.id] || null}));
+  }
+  if (first) { state.ach.init = today; }
+  if (fresh.length || first) save();
+  return {all: out, fresh: fresh, earned: out.filter(a => a.earnedOn), next: out.filter(a => !a.earnedOn && a.prog > 0).sort((a, b) => b.prog - a.prog)};
+}

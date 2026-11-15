@@ -52,6 +52,14 @@ Settings under You: sound, vibration, both or nothing, and a choice of four tone
 
 While a workout runs, the lock screen and the Dynamic Island show the exercise being worked on, what to do next ("Set 3 of 4 · 185 lb × 8", "Next: Incline press") and the rest countdown, with "Go" when the rest is over and "Paused" while paused. The web code builds that line (`liveLine`/`syncLive` in `part3.js`, sent through the plugin whenever it changes) and the SwiftUI views live in `ios/App/BearingWidgets`. `RestActivityAttributes.swift` exists in both the plugin and the extension and the two copies must stay identical; ActivityKit matches them by type name. The extension is its own target with bundle id `com.bengruver.bearing.BearingWidgets`, so it needs its own App Store provisioning profile in Codemagic (reference `bearing-widgets-app-store`); the `ios_signing` block picks it up by the bundle id prefix. iOS 16.2 or newer; older phones simply do not show it. The target was added with `ios/tools/add_widget_target.js`, since there is no Xcode in the loop.
 
+## The 1000 lb club and achievements
+
+Both are computed from the log, never stored as facts, so they agree on every phone. `clubStanding()` (part2) takes the best estimated single from the last 90 days for the squat, bench and deadlift families (sets of twelve or fewer, Epley/Brzycki blend); when a strict lift is missing, the closest barbell variant stands in and the card says so; tiers are 500, 750, 1000, 1200 and 1500 lb; the "lever" is the lift furthest below its usual share of the next tier (35/25/40). `achvList()` defines about thirty achievements across consistency, strength, volume, cardio and hydration, each with done/progress and, where the log can tell, the day it was earned; `achievements()` records first-earned dates in `state.ach.earned` (merged by earliest date in sync) and reports what is new, which the finish sheet celebrates. The first evaluation after the update records dates without celebrating.
+
+## Sets and reps mid-workout
+
+The Target row on an exercise opens a sheet to change sets, reps and the top of the range (or "until failure"). `retarget()` re-runs the coach for the new range right away: the weight and rep goals update, the draft follows unless sets are already logged, and a checkbox copies the change into the routine for next time.
+
 ## Accounts and sync
 
 When `config.json` has a `syncKey`, an account is required: the app opens on a sign-in screen, and the whole log syncs as one row per user in the Supabase table `bearing_state` (row-level security: each user reads and writes only their own row). The key is Supabase's publishable key, which is meant to be public; the user's own session token is what grants access. Without a key the account features are hidden and the app is local-only.
@@ -72,4 +80,5 @@ node shot83.js                             # native bridge with a fake Capacitor
 node shot85.js                             # the rest alert: settings, tones, notification sound, native player
 node shot86.js                             # the Live Activity bridge and the pause fix
 node shot87.js                             # What you track: confirm before turning a half off, notice in the exercise list, tiles restored
+node shot88.js                             # sets and reps mid-workout, achievements at finish, the club card
 ```

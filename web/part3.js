@@ -524,7 +524,7 @@ function targetLines(en, e, last, i){
     today = '<span class="today' + (r.conf === 'low' ? ' low' : '') + '">' + wTxt + '<small>' + (t.fail ? 'every set to failure' : 'goal ' + goals.join(' / ')) + (r.conf === 'low' ? ' · suggested' : '') + '</small></span>';
     why = whyLine(r, e);
   }
-  return '<div class="tl"><span class="k">Target</span><span class="v">' + t.sets + ' sets ' + (t.fail ? 'to failure' : 'of ' + (t.hi === 99 ? t.reps + ' or more on the last' : (t.hi && t.hi !== t.reps ? t.reps + ' to ' + t.hi : t.reps))) + '</span>' +
+  return '<div class="tl"><span class="k">Target</span><span class="v">' + t.sets + ' sets ' + (t.fail ? 'to failure' : 'of ' + (t.hi === 99 ? t.reps + ' or more on the last' : (t.hi && t.hi !== t.reps ? t.reps + ' to ' + t.hi : t.reps))) + ' <button class="btn link small" data-act="target-open" data-i="' + i + '">Change ›</button></span>' +
     '<span class="k">Last</span><span class="v">' + lastTxt + '</span>' +
     (today ? '<span class="k">Today</span><span class="v">' + today + '</span>' : '') +
     (why ? '<span class="k">Why</span><span class="v why">' + esc(why) + (r && r.w !== null && !e.time && !state.active.light ? ' <button class="btn link small" data-act="ex-menu" data-i="' + i + '">' + (en.adj ? 'Change ›' : 'Not today? ›') + '</button>' : '') + '</span>' : '') + '</div>';
@@ -674,7 +674,7 @@ function renderProgress(){
   const freq = {}; for (const w of state.workouts) for (const en of w.entries) if (en.sets.length) freq[en.ex] = (freq[en.ex] || 0) + 1;
   const exIds = Object.keys(freq).filter(id => freq[id] >= 2).sort((a, b) => ((ex(a).type === 'cardio') - (ex(b).type === 'cardio')) || (freq[b] - freq[a]));
   let sel = state.ui.progEx; if (!sel || exIds.indexOf(sel) < 0) sel = exIds[0] || null;
-  return header(streak ? streak + '-week streak' : 'Progress') + '<div class="stack">' + (scoreOn() ? scoreCard() : (liftOn() ? standardsCard(true) : '')) + picksCard() +
+  return header(streak ? streak + '-week streak' : 'Progress') + '<div class="stack">' + (scoreOn() ? scoreCard() : (liftOn() ? standardsCard(true) : '')) + (liftOn() ? clubCard() : '') + achievementsCard() + picksCard() +
     '<div class="tiles">' + tile(weekW.length, 'This week', 'of ' + weeklyTarget() + (goalDays() ? ' goal' : ' planned')) + tile(streak, 'Week streak', streak ? 'weeks in a row with a workout' : 'log a workout to start one') +
       (liftOn() ? tile(fmtVol(vol), 'Lifted this week', wUnit() + ' total') + tile(prs30, 'PRs', 'last 30 days') + tile(keptPct === null ? 'n/a' : keptPct + '%', 'Targets kept', keptPct === null ? 'no targets logged yet' : 'sets done at the suggested weight, 30 days')
         : tile(Math.round(weekW.reduce((n, w) => n + cardioOf(w).sec, 0) / 60), 'Cardio this week', 'minutes') + tile(dispD(weekW.reduce((n, w) => n + cardioOf(w).mi, 0)), 'Distance this week', dUnit()) + tile(Math.round(cardioScore(todayKey()).weekly).toLocaleString('en-US'), 'Cardio load', 'MET-min a week, 4-week average')) +
@@ -910,6 +910,96 @@ function waterSettings(){
       (s.goal ? '<div style="margin-top:6px"><button class="btn link small" data-act="water-auto">Use my body weight instead (' + dispVol(waterAutoGoal()) + ' ' + u + ')</button></div>' : '') +
       '<div class="row" style="margin-top:8px;gap:8px"><span class="small grow">Add more on training and sauna days</span><button class="chip' + (bonus ? ' on' : '') + '" data-act="water-bonus" aria-pressed="' + (bonus ? 'true' : 'false') + '">' + (bonus ? 'On ✓' : 'Off') + '</button></div>' : '');
 }
+/* ---------- the 1000 lb club card ---------- */
+function clubCard(){
+  const c = clubStanding(), u = wUnit(), kgNote = isKg() ? ' (' + Math.round(1000 / LB_PER_KG) + ' kg)' : '';
+  const head = '<div class="card-head"><div><div class="h3">1000 lb club' + kgNote + '</div><div class="tiny muted">Squat, bench and deadlift, best estimated singles from the last ' + CLUB_DAYS + ' days</div></div>' + (c.tier ? '<span class="pill level high" style="white-space:nowrap">' + c.tier.toLocaleString('en-US') + ' lb</span>' : '') + '</div>';
+  if (!c.have) return '<div class="card">' + head + '<div class="empty">Log a squat, a bench press and a deadlift (sets of twelve or fewer) and your total appears here.</div></div>';
+  const goal = c.next || CLUB_TIERS[CLUB_TIERS.length - 1], pct = l => Math.max(0, Math.min(100, 100 * l.e1 / goal));
+  const bar = '<div class="clubbar" role="img" aria-label="' + fmtVol(c.total) + ' of ' + fmtVol(goal) + ' ' + u + '">' + c.lifts.filter(l => l.e1 > 0).map(l => '<span class="seg ' + l.key + '" style="width:' + pct(l).toFixed(2) + '%"></span>').join('') + '</div>' +
+    '<div class="between tiny muted" style="margin-top:4px"><span>0</span><span>' + fmtVol(goal) + ' ' + u + (c.next ? '' : ' and beyond') + '</span></div>';
+  const rows = c.lifts.map(l => '<div class="clubrow"><span class="dot ' + l.key + '"></span><span class="grow"><b>' + l.name + '</b>' + (l.e1 ? (l.standin ? ' <span class="tiny muted">' + esc(ex(l.ex).name) + ', standing in</span>' : (l.ex !== l.key && ex(l.ex).name !== l.name ? ' <span class="tiny muted">' + esc(ex(l.ex).name) + '</span>' : '')) + '<br><span class="tiny muted">' + dispW(l.w) + ' × ' + l.r + ' on ' + fmtShort(l.date) + (l.old ? ' · more than ' + CLUB_DAYS + ' days ago' : '') + '</span>' : '<br><span class="tiny muted">not logged yet</span>') + '</span><span class="num" style="font-weight:700">' + (l.e1 ? dispW(Math.round(l.e1)) : '—') + '</span></div>').join('');
+  let line;
+  if (c.have < 3) line = 'Total so far from ' + c.have + ' of the 3 lifts. ' + c.lifts.filter(l => !l.e1).map(l => 'Log a ' + l.name.toLowerCase()).join(' and ') + ' to complete it.';
+  else if (c.next) line = fmtVol(c.toGo) + ' ' + u + ' to the ' + c.next.toLocaleString('en-US') + ' lb club.' + (c.lever ? ' The ' + c.lever.name.toLowerCase() + ' is the biggest lever: its usual share of ' + c.next.toLocaleString('en-US') + ' is about ' + fmtVol(c.lever.want) + ' ' + u + ', and you are at ' + fmtVol(c.lever.e1) + '.' : '');
+  else line = 'Past every club on the list. ' + fmtVol(c.total) + ' ' + u + ' total.';
+  const hero = '<div class="stdhero"><div class="eyebrow">Your total</div><div class="big num">' + fmtVol(c.total) + ' <span class="small muted" style="font-family:var(--body);font-size:16px;font-weight:600">' + u + (c.ratio ? ' · ' + (Math.round(c.ratio * 10) / 10) + '× body weight' : '') + '</span></div></div>';
+  const tiers = '<div class="chips" style="margin-top:10px;flex-wrap:wrap;overflow:visible">' + CLUB_TIERS.map(t => '<span class="chip' + (c.total >= t ? ' on' : '') + '" aria-disabled="true">' + t.toLocaleString('en-US') + (c.total >= t ? ' ✓' : '') + '</span>').join('') + '</div>';
+  return '<div class="card">' + head + hero + bar + '<div class="stack" style="gap:8px;margin-top:12px">' + rows + '</div><p class="small" style="margin:12px 0 0">' + line + '</p>' + tiers +
+    '<div class="tiny faint" style="margin-top:10px">Estimates use the Epley and Brzycki formulas on your best set of twelve reps or fewer. Back squat, flat bench and conventional or sumo deadlift count; when one is missing, the closest barbell variant stands in and says so. A guide, not a meet result.</div></div>';
+}
+
+/* ---------- achievements ---------- */
+const BADGE = {
+  flame: '<path d="M14 3c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 1-3s1 2 2 2c0-4 1-7 2-10z"/>',
+  calendar: '<rect x="5" y="7" width="18" height="16" rx="2"/><path d="M5 12h18M10 4v5M18 4v5"/>',
+  target: '<circle cx="14" cy="14" r="9"/><circle cx="14" cy="14" r="5"/><circle cx="14" cy="14" r="1.5"/>',
+  bolt: '<path d="M16 3L7 16h6l-1 9 9-13h-6l1-9z"/>',
+  trophy: '<path d="M9 4h10v6a5 5 0 0 1-10 0V4z"/><path d="M9 6H5a4 4 0 0 0 4 5M19 6h4a4 4 0 0 1-4 5M14 15v4M10 23h8M11 19h6"/>',
+  plate: '<circle cx="14" cy="14" r="10"/><circle cx="14" cy="14" r="3"/><path d="M14 4v4M14 20v4M4 14h4M20 14h4"/>',
+  ladder: '<path d="M9 3v22M19 3v22M9 8h10M9 13h10M9 18h10"/>',
+  stack: '<rect x="5" y="17" width="18" height="5" rx="1.5"/><rect x="7" y="11" width="14" height="5" rx="1.5"/><rect x="9" y="5" width="10" height="5" rx="1.5"/>',
+  wave: '<path d="M3 16c3 0 3-3 6-3s3 3 6 3 3-3 6-3 3 3 6 3M3 21c3 0 3-3 6-3s3 3 6 3 3-3 6-3 3 3 6 3"/>',
+  shoe: '<path d="M4 18l3-8 4 2 3-3 5 5 6 2v3H4z"/><path d="M4 18h21"/>',
+  drop: '<path d="M14 3s7 8 7 13a7 7 0 0 1-14 0c0-5 7-13 7-13z"/>'
+};
+function badgeSVG(icon, earned){ return '<svg class="badge-ic' + (earned ? '' : ' locked') + '" viewBox="0 0 28 28" width="34" height="34" aria-hidden="true"><circle cx="14" cy="14" r="13" class="bg"/>' + (BADGE[icon] || BADGE.flame) + '</svg>'; }
+function badgeHTML(a, big){
+  const on = !!a.earnedOn;
+  return '<div class="badge' + (on ? ' on' : '') + (big ? ' big' : '') + '">' + badgeSVG(a.icon, on) + '<div class="grow"><div class="nm">' + esc(a.name) + '</div><div class="tiny muted">' + esc(on ? 'Earned ' + fmtShort(a.earnedOn) : a.desc) + '</div>' + (on ? '' : '<div class="pbar"><i style="width:' + Math.round(100 * (a.prog || 0)) + '%"></i></div><div class="tiny muted">' + esc(a.line || '') + '</div>') + '</div></div>';
+}
+function achievementsCard(){
+  const r = achievements(), n = r.earned.length, total = r.all.length;
+  const head = '<div class="card-head"><div><div class="h3">Achievements</div><div class="tiny muted">' + n + ' of ' + total + ' earned, from your log</div></div><button class="btn sm ghost" data-act="achv-open">All</button></div>';
+  const recent = r.earned.slice().sort((a, b) => a.earnedOn < b.earnedOn ? 1 : -1).slice(0, 6);
+  const next = r.next.slice(0, 3);
+  return '<div class="card">' + head +
+    (recent.length ? '<div class="badges">' + recent.map(a => '<div class="badge mini"><span title="' + esc(a.name) + '">' + badgeSVG(a.icon, true) + '</span><div class="tiny" style="margin-top:4px;text-align:center;line-height:1.2">' + esc(a.name) + '</div></div>').join('') + '</div>' : '<div class="empty" style="padding:12px 0">Your first badge comes with your first workout.</div>') +
+    (next.length ? '<div class="datehead" style="margin:12px 0 4px">Next up</div><div class="stack" style="gap:8px">' + next.map(a => badgeHTML(a)).join('') + '</div>' : '') + '</div>';
+}
+function achievementsSheet(){
+  const r = achievements();
+  return '<div class="between"><div class="h2">Achievements</div><button class="btn sm ghost" data-act="close">Close</button></div><p class="small muted" style="margin:6px 0 12px">' + r.earned.length + ' of ' + r.all.length + ' earned. Everything here is read from your log, so it is the same on every phone.</p>' +
+    ACHV_CATS.map(c => { const list = r.all.filter(a => a.cat === c[0]); if (!list.length) return ''; const got = list.filter(a => a.earnedOn).length; return '<div class="datehead" style="margin:12px 0 6px">' + c[1] + ' <span class="tiny muted" style="font-weight:400;text-transform:none;letter-spacing:0">' + got + ' of ' + list.length + '</span></div><div class="stack" style="gap:8px">' + list.map(a => badgeHTML(a)).join('') + '</div>'; }).join('');
+}
+function newBadgesHTML(ids){
+  if (!ids || !ids.length) return '';
+  const all = achvList(); const got = ids.map(id => all.find(a => a.id === id)).filter(Boolean);
+  if (!got.length) return '';
+  return '<div class="newbadge"><div class="eyebrow" style="color:var(--good)">' + (got.length === 1 ? 'New achievement' : got.length + ' new achievements') + '</div><div class="stack" style="gap:8px;margin-top:6px">' + got.map(a => '<div class="badge on">' + badgeSVG(a.icon, true) + '<div class="grow"><div class="nm">' + esc(a.name) + '</div><div class="tiny muted">' + esc(a.desc) + '</div></div></div>').join('') + '</div></div>';
+}
+
+/* ---------- sets and reps, changed mid-workout ---------- */
+function targetSheet(){
+  const a = state.active, i = sheet.i, en = a && a.entries[i]; if (!en) return '';
+  const e = ex(en.ex), t = en.target, sel = (v, cur) => v === cur ? ' selected' : '';
+  const nums = (n, cur, from) => Array.from({length: n - (from || 1) + 1}, (_, k) => k + (from || 1)).map(v => '<option value="' + v + '"' + sel(v, cur) + '>' + v + '</option>').join('');
+  const secs = [10, 15, 20, 30, 40, 45, 60, 75, 90, 120, 150, 180].map(v => '<option value="' + v + '"' + sel(v, t.reps) + '>' + v + ' s</option>').join('');
+  const r = a.routine ? routine(a.routine) : null, it = r ? r.items.find(x => x.ex === en.ex) : null;
+  const rec = en.rec, done = counted(en.sets).length;
+  const coach = rec ? (rec.w === null ? 'The coach has no weight for this yet; the rep goals follow the new range.' : 'Coach now: <b>' + (rec.w === 0 && e.bw ? 'bodyweight' : dispW(rec.w) + ' ' + wUnit()) + '</b>, goal ' + rec.goals.map((g, k) => g + (t.hi === 99 && k === rec.goals.length - 1 ? '+' : '')).join(' / ') + (done ? ' · ' + done + ' set' + (done === 1 ? '' : 's') + ' already logged' : '')) : 'Rep goals follow the new range.';
+  return '<div class="between"><div><div class="eyebrow">' + esc(e.name) + '</div><div class="h2">Sets and reps</div></div><button class="btn sm ghost" data-act="close">Done</button></div>' +
+    '<div class="opts" style="margin:12px 0 6px"><label>Sets<select class="sm" data-tgt="sets" data-i="' + i + '">' + nums(8, t.sets) + '</select></label>' +
+    '<label>' + (e.time ? 'Seconds' : 'Reps') + '<select class="sm" data-tgt="reps" data-i="' + i + '">' + (e.time ? secs : nums(30, t.fail ? 0 : t.reps) + '<option value="fail"' + (t.fail ? ' selected' : '') + '>Until failure</option>') + '</select></label>' +
+    (e.time || t.fail ? '' : '<label>Up to<select class="sm" data-tgt="hi" data-i="' + i + '">' + nums(30, t.hi || t.reps, t.reps) + '<option value="99"' + (t.hi === 99 ? ' selected' : '') + '>AMRAP</option></select></label>') + '</div>' +
+    '<div class="small" id="tgt-coach" style="margin:8px 0 12px">' + coach + '</div>' +
+    (it ? '<label class="row" style="gap:10px;align-items:center"><input type="checkbox" id="tgt-routine"' + (sheet.toRoutine ? ' checked' : '') + '><span class="small">Also change it in <b>' + esc(r.name) + '</b> for next time</span></label>' : '<div class="tiny muted">This workout only. Save the workout as a routine at the end to keep the change.</div>') +
+    '<div class="tiny muted" style="margin-top:10px">The coach re-plans the weight and the rep goals for the new range right away.' + (done ? ' Sets already logged stay as they are.' : '') + '</div>';
+}
+/* Apply a changed target: the coach re-plans for it, the draft follows unless sets are already logged, the routine too when asked. */
+function retarget(i, toRoutine){
+  const a = state.active, en = a && a.entries[i]; if (!en) return;
+  const e = ex(en.ex), t = en.target, done = counted(en.sets).length;
+  if (t.fail) { t.hi = t.reps; } else if (t.hi !== 99 && t.hi < t.reps) t.hi = t.reps;
+  let rec = recommend(en.ex, t); if (rec && a.light) rec = lightRec(rec, e); if (rec && en.adj) rec = adjustRec(rec, e, en.adj, lastPerformance(en.ex));
+  en.rec = rec;
+  if (rec) { if (rec.w !== null && !done) { en.draft.w = rec.w; refreshWarmups(i); } en.draft.r = t.fail ? en.draft.r : (rec.goals[Math.min(done, rec.goals.length - 1)] || t.reps); if (en.draft.sub) subRefresh(en.draft.sub, en.draft, e); }
+  else en.draft.r = t.reps;
+  en.draft.amrap = !!t.fail;
+  if (toRoutine && a.routine) { const r = routine(a.routine), it = r && r.items.find(x => x.ex === en.ex); if (it) { it.sets = t.sets; it.reps = t.reps; if (t.fail) { it.fail = true; delete it.hi; } else { delete it.fail; it.hi = t.hi; } } }
+  save();
+}
+
 function renderYou(){
   const p = state.profile, alert = state.settings.sound && state.settings.vibrate ? 'both' : state.settings.sound ? 'sound' : state.settings.vibrate ? 'vibrate' : 'none';
   const sel = (v, cur) => v === cur ? ' selected' : '';
@@ -1114,9 +1204,13 @@ function renderModal(){
   if (sheet.type === 'summary') {
     const w = state.workouts.find(x => x.id === sheet.id); if (!w) { sheet = null; modalEl.innerHTML = ''; return; }
     inner = '<div class="eyebrow brandrow"><span class="brand">' + BRAND.symbol + '</span>Workout complete</div><div class="h2" style="margin:4px 0 12px">' + esc(w.name) + '</div><div class="sumgrid">' + sumTiles(w) + '</div>' +
-      (w.prs.length ? '<div style="margin-top:12px">' + prLines(w) + '</div>' : '') +
+      (w.prs.length ? '<div style="margin-top:12px">' + prLines(w) + '</div>' : '') + newBadgesHTML(w.ach) +
       '<div style="margin-top:12px">' + coachSummaryHTML(w.coach) + '</div>' +
       '<button class="btn primary" style="margin-top:14px" data-act="summary-done">Done</button>' + updateRoutineBlock(w) + '<div class="row" style="margin-top:10px;gap:14px;justify-content:center;flex-wrap:wrap"><button class="btn link small" data-act="share" data-id="' + w.id + '">Share</button><button class="btn link small" data-act="summary" data-id="' + w.id + '">Full summary</button><button class="btn link small" data-act="reopen" data-id="' + w.id + '">Reopen</button><button class="btn link small" data-act="save-routine" data-id="' + w.id + '">' + (w.routine ? 'Save as a new routine' : 'Save as routine') + '</button></div>';
+  } else if (sheet.type === 'achv') {
+    inner = achievementsSheet();
+  } else if (sheet.type === 'target') {
+    inner = targetSheet(); if (!inner) { sheet = null; modalEl.innerHTML = ''; return; }
   } else if (sheet.type === 'exmenu') {
     const a = state.active, i = sheet.i, en = a && a.entries[i]; if (!en) { sheet = null; modalEl.innerHTML = ''; return; }
     const e = ex(en.ex), sel = (v, cur) => v === cur ? ' selected' : '';
@@ -1549,6 +1643,7 @@ function finish(){
     entries: a.entries.filter(en => en.sets.length).map(en => Object.assign({ex: en.ex, sets: en.sets.map(s => { const c = Object.assign({}, s); delete c.pr; delete c.prevW; return c; })}, en.pair ? {pair: true} : {}, en.adj ? {adj: en.adj} : {}, en.target ? {target: en.target} : {}, en.swapped ? {swapped: en.swapped} : {}))};
   for (const en of w.entries) { if (ex(en.ex).type !== 'lift' || ex(en.ex).time) continue; const top = topSet(working(en.sets)); if (!top) continue; const b = bestE1rm(en.ex); if (b > 0 && top.v > b + 0.01) w.prs.push({ex: en.ex, w: top.w, r: top.r, e1rm: top.v}); }
   state.workouts.push(w); state.active = null; state.timer = null; keepAwake(false);
+  try { w.ach = achievements().fresh; } catch (e) { w.ach = []; }
   state.ui.view = 'today'; sheet = {type: 'summary', id: w.id}; render(); renderModal(); window.scrollTo(0, 0);
 }
 function backupText(){ const s = Object.assign({}, state, {active: null, timer: null}); delete s.ui; delete s.sync; return JSON.stringify(s); }
@@ -1718,7 +1813,7 @@ app.addEventListener('click', e => {
     case 'easy-off': state.settings.lightUntil = null; if (sheet) closeSheet(); save(); render(); toast('Back to the normal plan'); break;
     case 'light-toggle': setLight(!(state.active && state.active.light)); break;
     case 'adj': { const a = state.active, i = +t.dataset.i, en = a && a.entries[i]; if (!en) break; const e = ex(en.ex), k = t.dataset.k, base = recommend(en.ex, en.target); if (!k) { delete en.adj; en.rec = base; } else { en.adj = k; en.rec = adjustRec(base, e, k, lastPerformance(en.ex)); } if (en.rec && en.rec.w !== null && !counted(en.sets).length) { en.draft.w = en.rec.w; en.draft.r = en.rec.goals[0]; refreshWarmups(i); if (en.draft.sub) subRefresh(en.draft.sub, en.draft, e); } closeSheet(); save(); render(); toast(k ? 'Your call. The plan stays where it is.' : 'Back to the coach\'s numbers'); break; }
-    case 'water-add': { const v = +t.dataset.v; waterAdd(todayKey(), volToOz(v)); render(); const g = waterGoal(todayKey()), tot = waterTotal(todayKey()); toast(tot >= g.total ? 'Goal hit: ' + dispVol(tot) + ' ' + waterUnit() : dispVol(tot) + ' of ' + dispVol(g.total) + ' ' + waterUnit()); break; }
+    case 'water-add': { const v = +t.dataset.v; waterAdd(todayKey(), volToOz(v)); render(); const g = waterGoal(todayKey()), tot = waterTotal(todayKey()); toast(tot >= g.total ? 'Goal hit: ' + dispVol(tot) + ' ' + waterUnit() : dispVol(tot) + ' of ' + dispVol(g.total) + ' ' + waterUnit()); if (tot >= g.total) { try { const f = achievements().fresh; if (f.length) { const nm = achvList().find(x => x.id === f[0]).name; setTimeout(() => toast('Achievement: ' + nm), 1900); } } catch (e) {} } break; }
     case 'water-undo': { const l = state.water && state.water[todayKey()]; if (l && l.length) { l.pop(); save(); render(); } break; }
     case 'water-open': sheet = {type: 'water', v: isKg() ? 500 : 16}; renderModal(); break;
     case 'water-step': { if (!sheet || sheet.type !== 'water') break; const inp = $('input[data-water="v"]'); const step = isKg() ? 50 : 4, cur = inp ? (parseInt(inp.value, 10) || 0) : sheet.v; sheet.v = clamp(cur + step * (+t.dataset.d), step, isKg() ? 3000 : 100); if (inp) inp.value = sheet.v; break; }
@@ -1732,6 +1827,8 @@ app.addEventListener('click', e => {
     case 'skip': state.active.entries[i].skipped = true; state.active.idx = +t.dataset.to; render(); window.scrollTo(0, 0); break;
     case 'pause': togglePause(); break;
     case 'ex-menu': sheet = {type: 'exmenu', i: i}; renderModal(); break;
+    case 'target-open': { const a = state.active, en = a && a.entries[i]; if (!en) break; const r = a.routine ? routine(a.routine) : null, it = r ? r.items.find(x => x.ex === en.ex) : null; sheet = {type: 'target', i: i, toRoutine: false, orig: it ? Object.assign({}, it) : null}; renderModal(); break; }
+    case 'achv-open': sheet = {type: 'achv'}; renderModal(); break;
     case 'move': { const a = state.active, j = i + (+t.dataset.d); if (j < 0 || j >= a.entries.length) break; const tmp = a.entries[i]; a.entries[i] = a.entries[j]; a.entries[j] = tmp; a.idx = j; closeSheet(); render(); break; }
     case 'note-edit': sheet = {type: 'note', ex: state.active.entries[i].ex}; renderModal(); setTimeout(() => { const ta = $('#note-text'); if (ta) ta.focus(); }, 50); break;
     case 'note-save': { const ta = $('#note-text'); const v = ta ? ta.value.trim() : ''; if (v) state.exNotes[t.dataset.ex] = v; else delete state.exNotes[t.dataset.ex]; closeSheet(); render(); break; }
@@ -1888,6 +1985,20 @@ app.addEventListener('change', e => {
   if (el.dataset.cycleAdd !== undefined) { if (el.value) { state.cycle.seq.push(el.value === 'rest' ? [] : [el.value]); if (!state.cycle.start) state.cycle.start = todayKey(); save(); render(); } return; }
   if (el.dataset.cycleToday !== undefined) { const k = +el.value; state.cycle.start = keyOf(addDays(new Date(), -k)); save(); render(); toast('Today is day ' + (k + 1)); return; }
   if (el.dataset.planAdd !== undefined) { const d = el.dataset.planAdd; if (el.value) { const list = state.plan[d] || (state.plan[d] = []); if (list.indexOf(el.value) < 0) list.push(el.value); } render(); return; }
+  if (el.dataset.tgt) {
+    const i = +el.dataset.i, en = state.active && state.active.entries[i]; if (!en) return;
+    const t = en.target, k = el.dataset.tgt;
+    if (k === 'sets') t.sets = clamp(+el.value || 1, 1, 8);
+    else if (k === 'reps') { if (el.value === 'fail') { t.fail = true; t.hi = t.reps; } else { delete t.fail; t.reps = clamp(+el.value || 1, 1, 300); if (t.hi !== 99 && (!t.hi || t.hi < t.reps)) t.hi = t.reps; } }
+    else if (k === 'hi') t.hi = +el.value;
+    retarget(i, !!(sheet && sheet.toRoutine)); renderModal(); render(); return;
+  }
+  if (el.id === 'tgt-routine') {
+    if (!sheet || sheet.type !== 'target') return; sheet.toRoutine = el.checked;
+    if (el.checked) retarget(sheet.i, true);
+    else if (sheet.orig && state.active && state.active.routine) { const r = routine(state.active.routine), it = r && r.items.find(x => x.ex === state.active.entries[sheet.i].ex); if (it) { for (const key of ['sets', 'reps', 'hi', 'fail']) { if (sheet.orig[key] === undefined) delete it[key]; else it[key] = sheet.orig[key]; } save(); } }
+    return;
+  }
   if (el.dataset.set) {
     const k = el.dataset.set;
     if (k === 'unit') state.settings.unit = el.value;
@@ -2156,6 +2267,7 @@ function mergeStates(local, remote){
   out.bodyweights = out.bodyweights || []; union(out.bodyweights, local.bodyweights, x => x.date + ':' + (x.t || 0)); out.bodyweights.sort((a, b) => a.date < b.date ? -1 : 1);
   out.water = out.water || {}; for (const d in (local.water || {})) { out.water[d] = out.water[d] || []; union(out.water[d], local.water[d], x => String(x.t)); }
   if (local.since && (!out.since || local.since < out.since)) out.since = local.since;
+  out.ach = Object.assign({earned: {}}, out.ach || {}); const le = (local.ach || {}).earned || {}; for (const id in le) if (!out.ach.earned[id] || le[id] < out.ach.earned[id]) out.ach.earned[id] = le[id]; if (!out.ach.init && local.ach && local.ach.init) out.ach.init = local.ach.init;
   return out;
 }
 function syncLine(){
@@ -2202,6 +2314,7 @@ state = load();
 if (!state) { state = fresh(/[?&]sample=1/.test(location.search)); saveNow(); }
 if (state.timer && state.timer.end < Date.now() - 15 * 60 * 1000) state.timer = null;
 recoveryFromUrl();
+try { if (!gateOn()) achievements(); } catch (e) {}
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.id === 'acct-pw' && !syncUi.busy) { e.preventDefault(); doAuth('in'); } });
 render(); renderModal(); nativeBoot();
 if (signedIn() && syncReady()) syncPull({});

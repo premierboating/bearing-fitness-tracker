@@ -38,7 +38,7 @@ PLANS THAT FIT YOUR WEEK
 Schedule by weekday, or as a repeating sequence of training days and rest days. Change a workout mid-session and save it as the new routine.
 
 PROGRESS THAT MEANS SOMETHING
-An athlete score out of 100 built from strength, cardio and consistency. Strength standards for the main lifts, one-rep max trends, and days trained in the last 7, 60 and 90 days.
+An athlete score out of 100 built from strength, cardio and consistency. Strength standards for the main lifts, one-rep max trends, your 1000 lb club total with the lift that moves it most, and achievements earned straight from your log.
 
 HYDRATION
 A daily water goal from your body weight and the day's training, with quick-add buttons.
